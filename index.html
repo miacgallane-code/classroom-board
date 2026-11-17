@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classroom Board</title>
+<meta name="theme-color" content="#f6f4f0">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav id="rail" aria-label="Board tools">
+  <button class="rail-btn rail-class" id="btn-switch" aria-label="Switch class"><span class="rail-kicker">Class</span><span id="rail-class-name">My class</span></button>
+  <button class="rail-btn rail-slides" id="btn-slides"><span data-icon="slides"></span><span>Slides</span></button>
+  <div class="rail-sep"></div>
+  <div id="rail-widgets"></div>
+  <div class="rail-grow"></div>
+  <button class="rail-btn" id="btn-class"><span data-icon="list"></span><span>Edit classes</span></button>
+  <button class="rail-btn" id="btn-full"><span data-icon="full"></span><span>Full screen</span></button>
+  <button class="rail-btn" id="btn-hide"><span data-icon="hide"></span><span>Hide</span></button>
+</nav>
+<button id="rail-show" title="Show tools" aria-label="Show tools">»</button>
+
+<main id="stage"></main>
+<div id="widgets"></div>
+
+<dialog id="dlg-slides">
+  <form method="dialog" class="dlg-head">
+    <h2>Slides</h2>
+    <button class="x" aria-label="Close">✕</button>
+  </form>
+  <div class="dlg-body">
+    <label class="field">
+      <span>Paste a link or embed code</span>
+      <textarea id="slide-link" rows="2" placeholder="https://docs.google.com/presentation/d/…"></textarea>
+    </label>
+    <label class="field">
+      <span>Name (optional)</span>
+      <input id="slide-name" type="text" placeholder="e.g. Maths – Fractions wk 3">
+    </label>
+    <p class="err" id="slide-err" hidden></p>
+    <div class="row">
+      <button class="btn primary" id="slide-add">Add slides</button>
+      <span class="or">or</span>
+      <label class="btn">Upload a PDF<input id="slide-pdf" type="file" accept="application/pdf" hidden></label>
+    </div>
+    <details class="help">
+      <summary>Which links work?</summary>
+      <ul>
+        <li><b>Google Slides</b> – paste the normal link from the address bar. The deck needs to be shared as “Anyone with the link can view”, or you need to be signed in to Google in this browser.</li>
+        <li><b>Canva</b> – Share → Public view link.</li>
+        <li><b>PowerPoint</b> – in PowerPoint for the web: File → Share → Embed, then paste the embed code. Or save the deck as a PDF and upload it.</li>
+        <li><b>Anything else</b> that gives you an embed code (an <code>&lt;iframe&gt;</code>) can be pasted too.</li>
+      </ul>
+    </details>
+    <h3>Saved slides</h3>
+    <ul id="deck-list" class="deck-list"></ul>
+  </div>
+</dialog>
+
+<dialog id="dlg-switch">
+  <form method="dialog" class="dlg-head">
+    <h2>Which class is this?</h2>
+    <button class="x" aria-label="Close">✕</button>
+  </form>
+  <div class="dlg-body">
+    <div id="switch-list" class="switch-list"></div>
+    <button class="btn" id="switch-edit">Add or edit classes</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-class">
+  <form method="dialog" class="dlg-head">
+    <h2>Edit classes</h2>
+    <button class="x" aria-label="Close">✕</button>
+  </form>
+  <div class="dlg-body">
+    <div class="row">
+      <select id="class-select" aria-label="Class"></select>
+      <button class="btn" id="class-new">New class</button>
+      <button class="btn danger" id="class-del">Delete</button>
+    </div>
+    <label class="field">
+      <span>Class name</span>
+      <input id="class-name" type="text">
+    </label>
+    <label class="field">
+      <span>Students – one name per line (you can paste straight from a roll or spreadsheet)</span>
+      <textarea id="class-students" rows="12" placeholder="Ava&#10;Noah&#10;Mia"></textarea>
+    </label>
+    <p class="note"><span id="class-count">0</span> students. Names are saved only in this browser on this computer.</p>
+
+    <section id="class-details" class="details">
+      <div class="details-head">
+        <h3>Boys &amp; girls</h3>
+        <span class="note" id="gender-tally"></span>
+      </div>
+      <label class="mix-check"><input type="checkbox" id="class-mix" checked> Mix boys and girls evenly when making groups</label>
+      <p class="note">Leave anyone unset if you prefer. This is never shown on the board.</p>
+      <div id="gender-list" class="gender-list"></div>
+
+      <h3>Keep apart</h3>
+      <div class="row pair-add">
+        <select id="apart-a" aria-label="First student"></select>
+        <span class="or">&amp;</span>
+        <select id="apart-b" aria-label="Second student"></select>
+        <button class="btn" id="apart-add" type="button">Add</button>
+      </div>
+      <ul id="apart-list" class="pair-list"></ul>
+
+      <h3>Keep together</h3>
+      <div class="row pair-add">
+        <select id="together-a" aria-label="First student"></select>
+        <span class="or">&amp;</span>
+        <select id="together-b" aria-label="Second student"></select>
+        <button class="btn" id="together-add" type="button">Add</button>
+      </div>
+      <ul id="together-list" class="pair-list"></ul>
+
+      <p class="note private">These details only appear here and are never shown on the board.</p>
+    </section>
+
+    <section class="details">
+      <h3>Use it on another computer</h3>
+      <p class="note">Everything is saved on this computer only. To move your classes, slides and game scores to another computer, back up to a file here, then restore that file on the other computer. The file includes student names and keep-apart notes, so keep it in your department OneDrive and don’t share it.</p>
+      <div class="row">
+        <button class="btn" id="backup-save" type="button">Back up to a file</button>
+        <label class="btn">Restore from a file<input id="backup-load" type="file" accept=".json,application/json" hidden></label>
+      </div>
+      <p class="err" id="backup-err" hidden></p>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="dlg-gbg">
+  <form method="dialog" class="dlg-head">
+    <h2>Good Behaviour Game</h2>
+    <button class="x" aria-label="Close">✕</button>
+  </form>
+  <div class="dlg-body">
+    <p class="note">Setting up for <b id="gbg-class"></b>. Each class keeps its own teams, expectations and term totals.</p>
+
+    <h3>Teams</h3>
+    <div id="gbg-team-list" class="gbg-team-list"></div>
+    <div class="row">
+      <button class="btn" id="gbg-team-add" type="button">Add team</button>
+      <button class="btn" id="gbg-shuffle" type="button">Sort class into teams</button>
+    </div>
+    <p class="note">Sorting uses today’s class list and skips anyone marked away. It follows your keep-apart, keep-together and mixing settings from Edit classes.</p>
+    <label class="mix-check"><input type="checkbox" id="gbg-names"> Show team members on the board</label>
+
+    <label class="field">
+      <span>Expectations – one per line</span>
+      <textarea id="gbg-rules" rows="4"></textarea>
+    </label>
+
+    <div class="row fields">
+      <label class="field grow">
+        <span>How to play</span>
+        <select id="gbg-mode">
+          <option value="stars">Earn stars – the team with the most stars wins</option>
+          <option value="classic">Classic – teams win by staying under the mark limit</option>
+        </select>
+      </label>
+      <label class="field" id="gbg-limit-wrap">
+        <span>Mark limit</span>
+        <input id="gbg-limit" type="number" min="1" max="20" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>Minutes (0 = no timer)</span>
+        <input id="gbg-minutes" type="number" min="0" max="90" inputmode="numeric">
+      </label>
+    </div>
+
+    <div class="row fields">
+      <label class="field">
+        <span>Class goal</span>
+        <input id="gbg-goal" type="number" min="1" max="999" inputmode="numeric">
+      </label>
+      <label class="field grow">
+        <span>Reward when the class reaches it</span>
+        <input id="gbg-reward" type="text" placeholder="e.g. Free drawing time">
+      </label>
+    </div>
+
+    <div class="row"><button class="btn danger" id="gbg-reset" type="button">Reset term totals</button></div>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
