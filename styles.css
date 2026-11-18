@@ -31,17 +31,13 @@
   --t-mid: #d9d9e0;
   --t-ink: #5d5b66;
 }
-/* muted pastels: tint (backgrounds), mid (outlines, accents), ink (text, readable on white and tint) */
-.tone-coral      { --t-bg: #f8e4e0; --t-mid: #db7a62; --t-ink: #a8472f; }
-.tone-teal       { --t-bg: #e7f1f2; --t-mid: #86b8bc; --t-ink: #447074; }
-.tone-mustard    { --t-bg: #f7f1e0; --t-mid: #d6ba62; --t-ink: #7d6827; }
-.tone-lavender   { --t-bg: #eee8f1; --t-mid: #a88db8; --t-ink: #7b5c8d; }
-.tone-pink       { --t-bg: #f8e9ef; --t-mid: #dc93ae; --t-ink: #af4169; }
-.tone-sage       { --t-bg: #ebf3ed; --t-mid: #9dc3a6; --t-ink: #4c7656; }
-.tone-apricot    { --t-bg: #f9ece4; --t-mid: #e2a27a; --t-ink: #9e572a; }
-.tone-periwinkle { --t-bg: #e8eaf1; --t-mid: #8e95ba; --t-ink: #5c6590; }
-.tone-mauve      { --t-bg: #f3ebf0; --t-mid: #c59ab6; --t-ink: #8e567b; }
-.tone-moss       { --t-bg: #eff5eb; --t-mid: #afcb9c; --t-ink: #557441; }
+/* the five board colours: tint (backgrounds), mid = the exact palette colour (outlines, accents),
+   ink = deeper shade of the same colour for text (4.5:1+ on white and on the tint) */
+.tone-blue      { --t-bg: #dfe9eb; --t-mid: #a3bfc7; --t-ink: #426a75; }
+.tone-rose      { --t-bg: #f1e5ea; --t-mid: #d7b6c2; --t-ink: #9c4e6a; }
+.tone-pistachio { --t-bg: #ecefdd; --t-mid: #c8d29d; --t-ink: #616d2c; }
+.tone-mauve     { --t-bg: #e5dde5; --t-mid: #b69fb4; --t-ink: #765673; }
+.tone-stone     { --t-bg: #f3f3ea; --t-mid: #deddc3; --t-ink: #6f6d38; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

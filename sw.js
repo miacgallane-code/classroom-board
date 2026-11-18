@@ -2,7 +2,7 @@
    After the first visit everything the board needs is kept on this device, so it opens
    with no internet, and even if a network filter later blocks the site.
    Bump VERSION whenever the app files change so devices pick up the update. */
-const VERSION = 'v6';
+const VERSION = 'v8';
 const CACHE = `classroom-board-${VERSION}`;
 const CORE = [
   './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
@@ -19,9 +19,10 @@ const OUTSIDE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloud
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await cache.addAll(CORE);
+    // cache: 'reload' skips the browser's own short-term cache, so a new version never stores old files
+    await cache.addAll(CORE.map(url => new Request(url, { cache: 'reload' })));
     await Promise.all(OUTSIDE.map(async url => {
-      try { const res = await fetch(url, { mode: 'cors' }); if (res.ok) await cache.put(url, res); } catch {}
+      try { const res = await fetch(url, { mode: 'cors', cache: 'reload' }); if (res.ok) await cache.put(url, res); } catch {}
     }));
     self.skipWaiting();
   })());
@@ -60,7 +61,8 @@ self.addEventListener('fetch', event => {
     const cache = await caches.open(CACHE);
     const key = ours && req.mode === 'navigate' ? './index.html' : req;
     const cached = await cache.match(key, { ignoreSearch: ours });
-    const refresh = fetch(req).then(async res => {
+    const fresh = ours ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req);
+    const refresh = fresh.then(async res => {
       if (ours ? await looksRight(req, res) : res.ok) await cache.put(key, res.clone());
       return res;
     }).catch(() => null);

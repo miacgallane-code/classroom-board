@@ -3,8 +3,8 @@
   <rect x="6" y="6" width="500" height="500" rx="114" fill="none" stroke="#ebebef" stroke-width="12"/>
   <rect x="96" y="120" width="320" height="210" rx="34" fill="#ffffff" stroke="#34333b" stroke-width="18"/>
   <path d="M206 392h100M256 330v62" stroke="#34333b" stroke-width="18" stroke-linecap="round"/>
-  <circle cx="176" cy="196" r="30" fill="#db7a62"/>
-  <circle cx="256" cy="196" r="30" fill="#a88db8"/>
-  <circle cx="336" cy="196" r="30" fill="#86b8bc"/>
-  <rect x="150" y="252" width="212" height="26" rx="13" fill="#d6ba62"/>
+  <circle cx="176" cy="196" r="30" fill="#d7b6c2"/>
+  <circle cx="256" cy="196" r="30" fill="#b69fb4"/>
+  <circle cx="336" cy="196" r="30" fill="#a3bfc7"/>
+  <rect x="150" y="252" width="212" height="26" rx="13" fill="#c8d29d"/>
 </svg>

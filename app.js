@@ -50,7 +50,7 @@ const icon = name => {
 document.querySelectorAll('[data-icon]').forEach(n => n.replaceWith(icon(n.dataset.icon)));
 
 /* muted pastel tones; each name always gets the same one */
-const TONES = ['coral', 'teal', 'mustard', 'lavender', 'pink', 'sage', 'apricot', 'periwinkle', 'mauve', 'moss'];
+const TONES = ['blue', 'rose', 'pistachio', 'mauve', 'stone'];
 const toneOf = text => {
   let h = 0;
   for (const ch of text) h = (h * 31 + ch.codePointAt(0)) >>> 0;
@@ -587,7 +587,7 @@ const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6,
 
 const WIDGETS = {
   picker: {
-    title: 'Student picker', icon: 'picker', tone: 'coral', w: 340, h: 280,
+    title: 'Student picker', icon: 'picker', tone: 'rose', w: 340, h: 280,
     build(root, d) {
       const cls = activeClass();
       if (!cls.students.length) { root.append(needClass()); return; }
@@ -639,7 +639,7 @@ const WIDGETS = {
   },
 
   groups: {
-    title: 'Group maker', icon: 'groups', tone: 'lavender', w: 460, h: 380,
+    title: 'Group maker', icon: 'groups', tone: 'mauve', w: 460, h: 380,
     build(root, d) {
       const cls = rulesOf(activeClass());
       if (!cls.students.length) { root.append(needClass()); return; }
@@ -713,7 +713,7 @@ const WIDGETS = {
   },
 
   dice: {
-    title: 'Dice', icon: 'dice', tone: 'teal', w: 320, h: 300,
+    title: 'Dice', icon: 'dice', tone: 'blue', w: 320, h: 300,
     build(root, d) {
       d.count ||= 1; d.sides ||= 6;
       const tray = el('div', { class: 'dice' });
@@ -756,7 +756,7 @@ const WIDGETS = {
   },
 
   counter: {
-    title: 'Counter', icon: 'counter', tone: 'periwinkle', w: 320, h: 240,
+    title: 'Counter', icon: 'counter', tone: 'blue', w: 320, h: 240,
     build(root, d) {
       /* scores are kept per class; a new class starts with the same counter names at 0 */
       d.byClass ||= {};
@@ -786,7 +786,7 @@ const WIDGETS = {
   },
 
   gbg: {
-    title: 'Class Champions', icon: 'gbg', tone: 'sage', w: 760, h: 128, minH: 100, slim: true,
+    title: 'Class Champions', icon: 'gbg', tone: 'pistachio', w: 760, h: 128, minH: 100, slim: true,
     /* starts as a strip along the bottom of the screen, out of the way of the slides */
     pos: () => ({ x: Math.max(100, Math.round((innerWidth - 760) / 2)), y: Math.max(0, innerHeight - 128 - 16) }),
     build(root, d) {
@@ -932,7 +932,7 @@ const WIDGETS = {
   },
 
   timer: {
-    title: 'Timer', icon: 'timer', tone: 'pink', w: 290, h: 140, minH: 112, slim: true,
+    title: 'Timer', icon: 'timer', tone: 'rose', w: 290, h: 140, minH: 112, slim: true,
     /* a small pocket in the top-right corner, clear of the slides */
     pos: () => ({ x: Math.max(100, innerWidth - 290 - 16), y: 16 }),
     build(root, d) {
@@ -996,7 +996,7 @@ const WIDGETS = {
   },
 
   note: {
-    title: 'Note', icon: 'note', tone: 'mustard', w: 300, h: 240,
+    title: 'Note', icon: 'note', tone: 'stone', w: 300, h: 240,
     build(root, d) {
       d.size ||= 28;
       const area = el('textarea', { class: 'note-area', placeholder: 'Type a reminder, instruction or learning goal…',
