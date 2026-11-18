@@ -36,6 +36,7 @@ const ICONS = {
   counter: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M7 9h4M9 7v4M13 15h4"/>',
   timer: '<circle cx="12" cy="13.5" r="7"/><path d="M12 13.5V10M10 3.5h4"/>',
   note: '<path d="M5 4.5h14v9.5l-5 5H5z"/><path d="M19 14h-5v5"/>',
+  install: '<rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M12 7v6M9 10.5l3 3 3-3M8 20h8"/>',
   gbg: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v3.5M8.5 20h7M10 16.5h4l.5 3.5h-5z"/>',
   list: '<path d="M9 7h10M9 12h10M9 17h10"/><path d="M5 7h.01M5 12h.01M5 17h.01" stroke-width="2.6"/>',
   full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
@@ -511,16 +512,19 @@ function beep() {
 }
 
 /* ---------- Good Behaviour Game: per-class data + set-up window ---------- */
-const GBG_TEAMS = ['Koalas', 'Wombats', 'Echidnas', 'Possums', 'Kookaburras', 'Platypuses'];
+const OLD_TEAM_NAMES = ['Koalas', 'Wombats', 'Echidnas', 'Possums', 'Kookaburras', 'Platypuses'];
 const GBG_RULES = ['Eyes and ears on the speaker', 'Hands and feet to ourselves', 'Kind words and actions', 'Try our best'];
-const newTeam = i => ({ id: uid(), name: GBG_TEAMS[i % GBG_TEAMS.length], members: [], score: 0, stars: 0, wins: 0 });
+const newTeam = i => ({ id: uid(), name: `Team ${i + 1}`, members: [], score: 0, stars: 0, wins: 0 });
 const gbgFor = (d, cls) => {
   d.byClass ||= {};
-  return d.byClass[cls.id] ||= {
+  const g = d.byClass[cls.id] ||= {
     teams: [0, 1, 2, 3].map(newTeam), rules: GBG_RULES.slice(), mode: 'stars', limit: 4,
-    minutes: 10, goal: 50, reward: '', showNames: true,
+    minutes: 10, goal: 50, reward: '', showNames: true, showRules: false,
     running: false, endAt: 0, left: 10 * 60000, result: null,
   };
+  /* earlier versions used animal team names; switch those to plain numbered teams */
+  g.teams.forEach((t, i) => { if (OLD_TEAM_NAMES.includes(t.name)) t.name = `Team ${i + 1}`; });
+  return g;
 };
 const gbgNow = () => gbgFor(state.widgets.gbg.data, rulesOf(activeClass()));
 
@@ -540,7 +544,8 @@ function fillGbgDialog() {
   }));
   $('#gbg-team-add').disabled = g.teams.length >= 6;
   $('#gbg-shuffle').disabled = !cls.students.length;
-  $('#gbg-names').checked = g.showNames;
+  $('#gbg-names').checked = g.showNames !== false;
+  $('#gbg-show-rules').checked = !!g.showRules;
   $('#gbg-rules').value = g.rules.join('\n');
   $('#gbg-mode').value = g.mode;
   $('#gbg-limit').value = g.limit;
@@ -560,6 +565,7 @@ $('#gbg-shuffle').addEventListener('click', gbgSet(g => {
   g.teams.forEach((t, i) => { t.members = groups[i] || []; });
 }, true));
 $('#gbg-names').addEventListener('change', gbgSet((g, t) => { g.showNames = t.checked; }));
+$('#gbg-show-rules').addEventListener('change', gbgSet((g, t) => { g.showRules = t.checked; }));
 $('#gbg-rules').addEventListener('input', gbgSet((g, t) => { g.rules = t.value.split('\n').map(s => s.trim()).filter(Boolean); }));
 $('#gbg-mode').addEventListener('change', gbgSet((g, t) => { g.mode = t.value; }, true));
 $('#gbg-limit').addEventListener('input', gbgSet((g, t) => { g.limit = num(t.value, 1, 20, g.limit); }));
@@ -780,12 +786,14 @@ const WIDGETS = {
   },
 
   gbg: {
-    title: 'Good Behaviour Game', icon: 'gbg', tone: 'mint', w: 680, h: 470,
+    title: 'Good Behaviour Game', icon: 'gbg', tone: 'mint', w: 760, h: 128, minH: 100, slim: true,
+    /* starts as a strip along the bottom of the screen, out of the way of the slides */
+    pos: () => ({ x: Math.max(100, Math.round((innerWidth - 760) / 2)), y: Math.max(0, innerHeight - 128 - 16) }),
     build(root, d) {
       const cls = rulesOf(activeClass());
       const g = gbgFor(d, cls);
       const stars = g.mode === 'stars';
-      let tick = null, clock = null, goBtn = null;
+      let tick = null, clock = null, goBtn = null, goalText = null, goalFill = null;
 
       const leftNow = () => g.running ? Math.max(0, g.endAt - Date.now()) : g.left;
       const fmt = ms => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -794,7 +802,8 @@ const WIDGETS = {
         const ms = leftNow();
         clock.textContent = fmt(ms);
         clock.classList.toggle('low', g.running && ms <= 60000);
-        goBtn.textContent = g.running ? 'Pause' : (g.left < g.minutes * 60000 ? 'Resume' : 'Start game');
+        goBtn.textContent = g.running ? '❚❚' : '▶';
+        goBtn.setAttribute('aria-label', g.running ? 'Pause timer' : 'Start timer');
       };
       const stopTick = () => { clearInterval(tick); tick = null; };
       const startTick = () => {
@@ -803,6 +812,15 @@ const WIDGETS = {
           if (g.running && leftNow() <= 0) { beep(); finish(); return; }
           showClock();
         }, 250);
+      };
+      const showGoal = () => {
+        if (!goalText) return;
+        const banked = g.teams.reduce((s, t) => s + (stars ? t.stars : t.wins), 0);
+        const live = stars && !g.result ? g.teams.reduce((s, t) => s + t.score, 0) : 0;
+        const have = banked + live;
+        goalFill.style.width = Math.min(100, Math.round(have / g.goal * 100)) + '%';
+        goalText.textContent = `${g.reward || 'Class goal'} · ${have}/${g.goal}${stars ? ' ★' : ' wins'}`;
+        goalText.parentElement.classList.toggle('reached', have >= g.goal);
       };
 
       const finish = () => {
@@ -838,32 +856,50 @@ const WIDGETS = {
       const draw = () => {
         const winners = new Set(g.result?.winners || []);
         const done = !!g.result;
-        const teamCards = g.teams.map((t, i) => {
-          const members = g.showNames ? t.members.filter(n => cls.students.includes(n)) : [];
-          const over = !stars && t.score > g.limit;
-          const scoreEl = el('div', { class: 'gbg-score', 'aria-live': 'polite' }, String(t.score),
-            el('small', { text: stars ? ' ★' : ` / ${g.limit}` }));
+
+        /* each team is an outlined box: tap the box to add, tap − to take one off */
+        const teams = el('div', { class: 'gbg-teams' }, g.teams.map((t, i) => {
+          const name = t.name || `Team ${i + 1}`;
+          const members = g.showNames !== false ? t.members.filter(n => cls.students.includes(n)) : [];
+          const num = el('span', { text: String(t.score) });
+          const card = el('div', {
+            class: 'gbg-team tone-' + TONES[i % TONES.length] + (winners.has(t.id) ? ' win' : '') + (!stars && t.score > g.limit ? ' over' : ''),
+            role: 'button', tabindex: done ? '-1' : '0', 'aria-disabled': done ? 'true' : 'false',
+          });
+          const label = () => card.setAttribute('aria-label', `${name}: ${t.score}. Tap to give ${stars ? 'a star' : 'a mark'}.`);
           const bump = by => {
+            if (g.result) return;
             t.score = Math.max(0, t.score + by); save();
-            const card = scoreEl.closest('.gbg-team');
-            scoreEl.firstChild.textContent = String(t.score);
+            num.textContent = String(t.score); label();
             card.classList.toggle('over', !stars && t.score > g.limit);
             card.classList.remove('bump'); void card.offsetWidth; card.classList.add('bump');
             showGoal();
           };
-          return el('div', { class: 'gbg-team tone-' + TONES[i % TONES.length] + (winners.has(t.id) ? ' win' : '') + (over ? ' over' : '') },
-            el('div', { class: 'gbg-name', text: t.name || `Team ${i + 1}` }),
-            scoreEl,
-            el('div', { class: 'gbg-btns' },
-              el('button', { class: 'w-btn round', text: '−', disabled: done, 'aria-label': `Take one off ${t.name}`, onclick: () => bump(-1) }),
-              el('button', { class: 'w-btn go', text: stars ? '+ ★' : '+ mark', disabled: done, 'aria-label': stars ? `Give ${t.name} a star` : `Give ${t.name} a mark`, onclick: () => bump(1) })),
-            members.length > 0 && el('p', { class: 'gbg-members', text: members.join(' · ') }),
-            el('span', { class: 'gbg-total', text: stars ? `Term: ${t.stars} ★` : `Term wins: ${t.wins}` }));
-        });
+          card.addEventListener('click', () => bump(1));
+          card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bump(1); } });
+          card.append(
+            el('span', { class: 'gbg-label' },
+              el('span', { class: 'gbg-name', text: name }),
+              members.length > 0 && el('span', { class: 'gbg-members', text: members.join(', ') })),
+            el('span', { class: 'gbg-num' }, num, el('small', { text: stars ? ' ★' : ` / ${g.limit}` })),
+            el('button', { class: 'gbg-minus', text: '−', disabled: done, 'aria-label': `Take one off ${name}`,
+              onclick: e => { e.stopPropagation(); bump(-1); } }));
+          label();
+          return card;
+        }));
+        teams.style.setProperty('--n', g.teams.length);
 
-        goal = el('div', { class: 'gbg-goal' });
         clock = g.minutes ? el('span', { class: 'gbg-clock', role: 'timer' }) : null;
-        goBtn = el('button', { class: 'w-btn go', onclick: toggleClock, disabled: done });
+        goBtn = g.minutes ? el('button', { class: 'w-btn round go', onclick: toggleClock, disabled: done }) : null;
+        const ctrl = el('div', { class: 'gbg-ctrl' },
+          g.minutes ? el('div', { class: 'gbg-ctrl-row' }, clock, goBtn) : null,
+          el('div', { class: 'gbg-ctrl-row' },
+            el('button', { class: 'w-btn', text: done ? 'New game' : 'Finish', onclick: done ? newGame : finish }),
+            el('button', { class: 'w-btn round', text: '⋯', title: 'Set up', 'aria-label': 'Set up the game', onclick: openGbgDialog })));
+
+        goalFill = el('i');
+        goalText = el('span', { class: 'gbg-goal-text' });
+        const goal = el('div', { class: 'gbg-goal' }, el('span', { class: 'gbg-bar' }, goalFill), goalText);
 
         let result = null;
         if (done) {
@@ -871,48 +907,22 @@ const WIDGETS = {
           const all = names.length === g.teams.length && names.length > 1;
           const headline = !names.length ? 'Not this time!'
             : all ? 'Every team wins!'
-            : names.length === 1 ? `${names[0]} win!`
+            : names.length === 1 ? `${names[0]} wins!`
             : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]} win!`;
-          const sub = !names.length
-            ? (stars ? 'No stars yet – let’s try again next time.' : 'Every team went over the limit. We’ll try again next week.')
-            : stars ? 'Stars have been added to the term totals.' : `Stayed at ${g.limit} marks or fewer. Great work!`;
-          result = el('div', { class: 'gbg-result', role: 'status' }, el('div', {},
-            el('h3', { text: headline }), el('p', { text: sub }),
-            el('div', { class: 'w-row' },
+          result = el('div', { class: 'gbg-result', role: 'status' },
+            el('h3', { text: headline }),
+            el('div', { class: 'gbg-ctrl-row' },
               el('button', { class: 'w-btn go', text: 'New game', onclick: newGame }),
-              el('button', { class: 'w-btn', text: 'Show scores', onclick: e => e.target.closest('.gbg-result').remove() }))));
+              el('button', { class: 'w-btn', text: 'Show scores', onclick: e => e.target.closest('.gbg-result').remove() })));
         }
 
-        const teams = el('div', { class: 'gbg-teams' }, teamCards);
-        teams.style.setProperty('--n', g.teams.length);
         root.replaceChildren(...[
-          g.rules.length ? el('ul', { class: 'gbg-rules', 'aria-label': 'Our expectations' }, g.rules.map(r => el('li', { text: r }))) : null,
-          teams,
+          g.showRules && g.rules.length ? el('p', { class: 'gbg-rules-line', text: g.rules.join('   ·   ') }) : null,
+          el('div', { class: 'gbg-main' }, teams, ctrl),
           goal,
-          el('div', { class: 'w-row' },
-            clock, g.minutes ? goBtn : null,
-            el('button', { class: 'w-btn', text: 'Finish game', disabled: done, onclick: finish }),
-            el('button', { class: 'w-btn', text: 'New game', onclick: newGame }),
-            el('button', { class: 'w-btn', text: 'Set up', onclick: openGbgDialog }),
-            classSwitch()),
           result,
         ].filter(Boolean));
         showGoal(); showClock();
-      };
-
-      let goal;
-      const showGoal = () => {
-        const banked = g.teams.reduce((s, t) => s + (stars ? t.stars : t.wins), 0);
-        const live = stars && !g.result ? g.teams.reduce((s, t) => s + t.score, 0) : 0;
-        const have = banked + live;
-        const pct = Math.min(100, Math.round(have / g.goal * 100));
-        const bar = el('span', { class: 'gbg-bar' }, el('i'));
-        bar.firstChild.style.width = pct + '%';
-        goal.replaceChildren(
-          el('span', { class: 'gbg-goal-label', text: `Class goal${g.reward ? ': ' + g.reward : ''}` }),
-          bar,
-          el('b', { text: `${have} / ${g.goal}${stars ? ' ★' : ' wins'}` }));
-        goal.classList.toggle('reached', have >= g.goal);
       };
 
       if (g.running && leftNow() <= 0 && !g.result) finish();
@@ -1016,7 +1026,8 @@ function openWidget(id) {
   if (live[id]) return;
   const def = WIDGETS[id];
   const order = Object.keys(WIDGETS).indexOf(id);
-  const ws = state.widgets[id] ||= { x: 120 + order * 36, y: 40 + order * 36, w: def.w, h: def.h, data: {} };
+  const ws = state.widgets[id] ||= { x: 120 + order * 36, y: 40 + order * 36, w: def.w, h: def.h, data: {}, ...(def.pos?.() || {}) };
+  if (def.slim && !ws.slim) { Object.assign(ws, { w: def.w, h: def.h, ...def.pos() }); ws.slim = true; }
   ws.open = true;
 
   const inner = el('div', { class: 'w-inner' });
@@ -1026,9 +1037,10 @@ function openWidget(id) {
   const grip = el('div', { class: 'w-resize' });
   const node = el('section', { class: 'widget', 'aria-label': def.title }, head, el('div', { class: 'w-body' }, inner), grip);
   node.classList.add('tone-' + def.tone);
+  if (def.slim) node.classList.add('slim');
 
   const place = () => {
-    ws.w = clamp(ws.w, 190, innerWidth); ws.h = clamp(ws.h, 150, innerHeight);
+    ws.w = clamp(ws.w, 190, innerWidth); ws.h = clamp(ws.h, def.minH || 150, innerHeight);
     ws.x = clamp(ws.x, 0, Math.max(0, innerWidth - 90));
     ws.y = clamp(ws.y, 0, Math.max(0, innerHeight - 44));
     Object.assign(node.style, { left: ws.x + 'px', top: ws.y + 'px', width: ws.w + 'px', height: ws.h + 'px' });
@@ -1141,6 +1153,18 @@ $('#backup-load').addEventListener('change', async e => {
   state = Object.assign(fresh(), data.state);
   writeNow();
   location.reload();
+});
+
+/* ---------- install as an app (Edge / Chrome) ---------- */
+let installPrompt = null;
+const installBtn = $('#btn-install');
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; installBtn.hidden = false; });
+addEventListener('appinstalled', () => { installPrompt = null; installBtn.hidden = true; });
+installBtn.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch {}
+  installPrompt = null; installBtn.hidden = true;
 });
 
 /* ---------- go ---------- */
