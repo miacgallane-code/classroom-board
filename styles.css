@@ -375,6 +375,16 @@ dialog::backdrop { background: #2f2e3540; backdrop-filter: blur(3px); }
 .clock.done { animation: flash .6s steps(2) infinite; color: var(--t-ink); }
 @keyframes flash { 50% { opacity: .2; } }
 
+/* compact timer */
+.tmain { flex: 1; min-height: 0; display: flex; align-items: center; gap: 8px; }
+.clock.tclock { flex: 1; text-align: center; font-size: min(52cqh, 27cqw); }
+.tbtns { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.tbtns .w-btn.round { width: 32px; min-height: 32px; height: 32px; font-size: 12px; padding: 0; }
+.tpresets { gap: 4px; flex-wrap: nowrap; }
+.tpresets-set { display: inline-flex; gap: 4px; }
+.tpresets .w-btn { min-height: 26px; padding: 2px 9px; font-size: 12px; }
+.tpresets .w-btn.round { width: 26px; height: 26px; padding: 0; }
+
 /* note */
 .note-area {
   flex: 1; min-height: 0; border: 0; resize: none; background: var(--t-bg); border-radius: var(--r-lg);

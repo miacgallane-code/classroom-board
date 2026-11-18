@@ -786,7 +786,7 @@ const WIDGETS = {
   },
 
   gbg: {
-    title: 'Good Behaviour Game', icon: 'gbg', tone: 'sage', w: 760, h: 128, minH: 100, slim: true,
+    title: 'Class Champions', icon: 'gbg', tone: 'sage', w: 760, h: 128, minH: 100, slim: true,
     /* starts as a strip along the bottom of the screen, out of the way of the slides */
     pos: () => ({ x: Math.max(100, Math.round((innerWidth - 760) / 2)), y: Math.max(0, innerHeight - 128 - 16) }),
     build(root, d) {
@@ -932,14 +932,16 @@ const WIDGETS = {
   },
 
   timer: {
-    title: 'Timer', icon: 'timer', tone: 'pink', w: 340, h: 270,
+    title: 'Timer', icon: 'timer', tone: 'pink', w: 290, h: 140, minH: 112, slim: true,
+    /* a small pocket in the top-right corner, clear of the slides */
+    pos: () => ({ x: Math.max(100, innerWidth - 290 - 16), y: 16 }),
     build(root, d) {
       d.total ||= 300;
       d.mode ||= 'down';
       let ms = d.mode === 'down' ? d.total * 1000 : 0;   // what's on the clock
       let anchor = 0, tick = null;
-      const clock = el('div', { class: 'clock', role: 'timer' });
-      const go = el('button', { class: 'w-btn go' });
+      const clock = el('div', { class: 'clock tclock', role: 'timer' });
+      const go = el('button', { class: 'w-btn round go' });
       const now = () => {
         if (!tick) return ms;
         const gone = Date.now() - anchor;
@@ -950,7 +952,8 @@ const WIDGETS = {
         const secs = d.mode === 'down' ? Math.ceil(t / 1000) : Math.floor(t / 1000);
         clock.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
         clock.classList.toggle('low', d.mode === 'down' && !!tick && secs <= 10 && secs > 0);
-        go.textContent = tick ? 'Pause' : 'Start';
+        go.textContent = tick ? '❚❚' : '▶';
+        go.setAttribute('aria-label', tick ? 'Pause' : 'Start');
       };
       const stop = () => { ms = now(); clearInterval(tick); tick = null; draw(); };
       const start = () => {
@@ -971,9 +974,9 @@ const WIDGETS = {
       };
       const setTotal = s => { d.total = clamp(s, 10, 5999); save(); reset(); };
       go.addEventListener('click', () => tick ? stop() : start());
-      const presets = el('div', { class: 'w-row' },
-        [[30, '30s'], [60, '1'], [120, '2'], [300, '5'], [600, '10']].map(([s, t]) =>
-          el('button', { class: 'w-btn', text: t, 'aria-label': s < 60 ? '30 seconds' : `${t} minutes`, onclick: () => setTotal(s) })),
+      const presets = el('span', { class: 'tpresets-set' },
+        [[60, '1'], [120, '2'], [300, '5'], [600, '10']].map(([s, t]) =>
+          el('button', { class: 'w-btn', text: t, 'aria-label': `${t} minute${s > 60 ? 's' : ''}`, onclick: () => setTotal(s) })),
         el('button', { class: 'w-btn round', text: '−', 'aria-label': 'One minute less', onclick: () => setTotal(d.total - 60) }),
         el('button', { class: 'w-btn round', text: '+', 'aria-label': 'One minute more', onclick: () => setTotal(d.total + 60) }));
       const modeBtn = el('button', { class: 'w-btn', onclick: () => {
@@ -985,9 +988,9 @@ const WIDGETS = {
       };
       sync(); draw();
       root.append(
-        el('div', { class: 'w-fill' }, clock),
-        el('div', { class: 'w-row' }, go, el('button', { class: 'w-btn', text: 'Reset', onclick: reset }), modeBtn),
-        presets);
+        el('div', { class: 'tmain' }, clock,
+          el('div', { class: 'tbtns' }, go, el('button', { class: 'w-btn round', text: '↺', 'aria-label': 'Reset', onclick: reset }))),
+        el('div', { class: 'w-row tpresets' }, presets, modeBtn));
       return () => clearInterval(tick);
     },
   },
