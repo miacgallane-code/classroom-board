@@ -1,1 +1,4 @@
 ﻿*.zip
+
+# plain class lists (children's names) never go in the repo
+classes*.json

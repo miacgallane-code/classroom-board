@@ -475,6 +475,58 @@ $('#btn-switch').addEventListener('click', () => {
 });
 $('#switch-edit').addEventListener('click', () => { dlgSwitch.close(); openClassDialog(); });
 
+/* ---------- class lists kept on the website, locked with a passcode (classes.locked.js) ---------- */
+const dlgUnlock = $('#dlg-unlock');
+async function unlockClassLists(pass) {
+  const box = window.LOCKED_CLASSES;
+  if (!box) throw new Error('missing');
+  const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.normalize('NFC').trim().toLowerCase()),
+    'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: bytes(box.salt), iterations: box.iter, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  let plain;
+  try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes(box.iv) }, key, bytes(box.data)); }
+  catch { throw new Error('wrong'); }
+  return JSON.parse(new TextDecoder().decode(plain)).classes;
+}
+function mergeClassLists(list) {
+  const same = (a, b) => a.trim().toLowerCase().replace(/\s+/g, '') === b.trim().toLowerCase().replace(/\s+/g, '');
+  let added = 0, updated = 0;
+  for (const { name, students } of list) {
+    const c = state.classes.find(x => same(x.name || '', name));
+    if (c) { c.students = students.slice(); updated++; }
+    else { state.classes.push({ id: uid(), name, students: students.slice() }); added++; }
+  }
+  // the empty starter class isn't needed once real classes arrive
+  state.classes = state.classes.filter(c => !(c.id === 'c1' && c.name === 'My class' && !c.students.length));
+  if (!state.classes.some(c => c.id === state.activeClass)) state.activeClass = state.classes[0].id;
+  writeNow(); refreshClass();
+  return { added, updated };
+}
+function openUnlock() {
+  $('#unlock-err').hidden = true;
+  $('#unlock-pass').value = '';
+  dlgUnlock.showModal();
+}
+$('#switch-unlock').addEventListener('click', () => { dlgSwitch.close(); openUnlock(); });
+$('#class-unlock').addEventListener('click', () => { $('#dlg-class').close(); openUnlock(); });
+$('#unlock-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('#unlock-err'), go = $('#unlock-go');
+  err.hidden = true; go.disabled = true; go.textContent = 'Unlocking…';
+  try {
+    mergeClassLists(await unlockClassLists($('#unlock-pass').value));
+    dlgUnlock.close();
+    $('#btn-switch').click(); // show the classes so the right one can be picked straight away
+  } catch (x) {
+    err.textContent = x.message === 'wrong' ? 'That passcode isn’t right. Check the spelling and try again.'
+      : x.message === 'missing' ? 'The class lists couldn’t be found. Reload the page and try again.'
+      : 'Something went wrong unlocking the lists. Try again.';
+    err.hidden = false;
+  } finally { go.disabled = false; go.textContent = 'Load classes'; }
+});
+
 /* ---------- widget parts ---------- */
 const stepper = (value, min, max, onchange, label) => {
   const out = el('b', { text: value });

@@ -72,8 +72,29 @@
   </form>
   <div class="dlg-body">
     <div id="switch-list" class="switch-list"></div>
-    <button class="btn" id="switch-edit">Add or edit classes</button>
+    <div class="row">
+      <button class="btn" id="switch-edit">Add or edit classes</button>
+      <button class="btn" id="switch-unlock" type="button">Load my class lists</button>
+    </div>
   </div>
+</dialog>
+
+<dialog id="dlg-unlock">
+  <form method="dialog" class="dlg-head">
+    <h2>Load my class lists</h2>
+    <button class="x" aria-label="Close">✕</button>
+  </form>
+  <form class="dlg-body" id="unlock-form">
+    <p class="note">Your class lists are stored on the website locked with a passcode, so no one else can read them. Type the passcode once on each computer or tablet. The lists are then saved on that device.</p>
+    <label class="field">Passcode
+      <input id="unlock-pass" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+    </label>
+    <p class="note">Classes with the same name are updated with the new list; their other settings stay. New classes are added. Nothing is deleted.</p>
+    <p class="err" id="unlock-err" hidden></p>
+    <div class="row">
+      <button class="btn primary" id="unlock-go" type="submit">Load classes</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="dlg-class">
@@ -131,6 +152,7 @@
       <h3>Use it on another computer</h3>
       <p class="note">Everything is saved on this computer only. To move your classes, slides and game scores to another computer, back up to a file here, then restore that file on the other computer. The file includes student names and keep-apart notes, so keep it in your department OneDrive and don’t share it.</p>
       <div class="row">
+        <button class="btn" id="class-unlock" type="button">Load my class lists</button>
         <button class="btn" id="backup-save" type="button">Back up to a file</button>
         <label class="btn">Restore from a file<input id="backup-load" type="file" accept=".json,application/json" hidden></label>
       </div>
@@ -197,6 +219,7 @@
   </div>
 </dialog>
 
+<script src="classes.locked.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
