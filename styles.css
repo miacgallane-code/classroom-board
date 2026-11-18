@@ -463,7 +463,23 @@ dialog::backdrop { background: #2f2e3540; backdrop-filter: blur(3px); }
   padding: 6px 10px; font-family: var(--hand); font-size: 19px; font-weight: 600; color: var(--t-ink);
 }
 .gbg-team-row input:focus { outline: 0; border-color: var(--t-mid); background: #fff; }
-.gbg-team-who { flex: 1; min-width: 0; font-family: var(--hand); font-size: 16px; color: var(--ink-soft); line-height: 1.3; }
+.gbg-team-row.can-drop { cursor: pointer; box-shadow: inset 0 0 0 2px var(--t-mid, var(--line-strong)); }
+.gbg-chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.gbg-chip {
+  font-family: var(--hand); font-size: 16px; line-height: 1.2; padding: 3px 10px;
+  border: 1.5px solid transparent; border-radius: 999px; background: #ffffffcc; color: var(--ink); cursor: pointer;
+}
+.gbg-chip:hover { border-color: var(--t-mid, var(--line-strong)); }
+.gbg-chip.picked { background: var(--charcoal); color: #fff; border-color: var(--charcoal); }
+.gbg-chip.away { opacity: .5; text-decoration: line-through; }
+.gbg-empty { font-family: var(--hand); font-size: 16px; color: var(--ink-faint); padding: 3px 0; }
+.gbg-move { flex: none; }
+.gbg-bench { background: var(--hover); }
+.gbg-bench-label { width: 150px; flex: none; padding-left: 10px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+@media (max-width: 560px) {
+  .gbg-team-row { flex-wrap: wrap; }
+  .gbg-team-row input, .gbg-bench-label { width: 100%; }
+}
 .row.fields { align-items: flex-end; }
 .row.fields .field { min-width: 120px; }
 .row.fields .field input { width: 100%; }

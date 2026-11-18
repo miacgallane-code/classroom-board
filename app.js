@@ -529,21 +529,66 @@ const gbgFor = (d, cls) => {
 const gbgNow = () => gbgFor(state.widgets.gbg.data, rulesOf(activeClass()));
 
 const dlgGbg = $('#dlg-gbg');
+let gbgPick = null; // name tapped in the team editor, waiting to be swapped or moved
+function gbgEdit(fn) { fn(gbgNow()); gbgPick = null; save(); fillGbgDialog(); rebuild('gbg'); }
+const gbgWhere = (g, n) => g.teams.findIndex(t => t.members.includes(n));
+function gbgTapName(n) {
+  if (!gbgPick || gbgPick === n) { gbgPick = gbgPick === n ? null : n; fillGbgDialog(); return; }
+  const a = gbgPick;
+  gbgEdit(g => {
+    const ta = gbgWhere(g, a), tb = gbgWhere(g, n);
+    if (ta < 0 && tb < 0) return;
+    if (ta >= 0) g.teams[ta].members.splice(g.teams[ta].members.indexOf(a), 1, n);
+    if (tb >= 0) g.teams[tb].members.splice(g.teams[tb].members.indexOf(n), 1, a);
+  });
+}
+function gbgMoveTo(i) { // i = team index, or -1 for "not in a team"
+  const n = gbgPick;
+  if (!n) return;
+  gbgEdit(g => {
+    g.teams.forEach(t => { t.members = t.members.filter(m => m !== n); });
+    if (i >= 0) g.teams[i].members.push(n);
+  });
+}
 function fillGbgDialog() {
   const g = gbgNow();
   const cls = activeClass();
+  const away = new Set(awayToday(cls));
   $('#gbg-class').textContent = cls.name || 'this class';
-  $('#gbg-team-list').replaceChildren(...g.teams.map((t, i) => {
+  const chip = n => el('button', {
+    type: 'button', class: 'gbg-chip' + (n === gbgPick ? ' picked' : '') + (away.has(n) ? ' away' : ''),
+    text: n, 'aria-pressed': String(n === gbgPick), title: away.has(n) ? 'Away today' : '',
+    onclick: e => { e.stopPropagation(); gbgTapName(n); },
+  });
+  const moveBtn = (i, here) => gbgPick && !here && el('button', {
+    type: 'button', class: 'btn small gbg-move', text: 'Move here',
+    onclick: e => { e.stopPropagation(); gbgMoveTo(i); },
+  });
+  const rows = g.teams.map((t, i) => {
     const members = t.members.filter(n => cls.students.includes(n));
-    return el('div', { class: 'gbg-team-row tone-' + TONES[i % TONES.length] },
-      el('input', { value: t.name, 'aria-label': `Team ${i + 1} name`, oninput: e => { t.name = e.target.value; save(); rebuild('gbg'); } }),
-      el('span', { class: 'gbg-team-who', text: members.length ? members.join(', ') : 'No students yet' }),
-      g.teams.length > 2 && el('button', { class: 'btn small danger', type: 'button', text: 'Remove', 'aria-label': `Remove ${t.name}`, onclick: () => {
-        g.teams.splice(i, 1); save(); fillGbgDialog(); rebuild('gbg');
+    return el('div', { class: 'gbg-team-row tone-' + TONES[i % TONES.length] + (gbgPick ? ' can-drop' : ''), onclick: () => gbgMoveTo(i) },
+      el('input', { value: t.name, 'aria-label': `Team ${i + 1} name`, onclick: e => e.stopPropagation(), oninput: e => { t.name = e.target.value; save(); rebuild('gbg'); } }),
+      el('div', { class: 'gbg-chips' },
+        members.length ? members.map(chip) : el('span', { class: 'gbg-empty', text: 'No one yet' })),
+      moveBtn(i, members.includes(gbgPick)),
+      g.teams.length > 2 && el('button', { class: 'btn small danger', type: 'button', text: 'Remove', 'aria-label': `Remove ${t.name}`, onclick: e => {
+        e.stopPropagation(); gbgEdit(g2 => g2.teams.splice(i, 1));
       } }));
-  }));
+  });
+  const bench = cls.students.filter(n => gbgWhere(g, n) < 0);
+  if (bench.length || gbgPick) {
+    rows.push(el('div', { class: 'gbg-team-row gbg-bench' + (gbgPick ? ' can-drop' : ''), onclick: () => gbgMoveTo(-1) },
+      el('span', { class: 'gbg-bench-label', text: 'Not in a team' }),
+      el('div', { class: 'gbg-chips' }, bench.length ? bench.map(chip) : el('span', { class: 'gbg-empty', text: 'Everyone’s in a team' })),
+      moveBtn(-1, bench.includes(gbgPick))));
+  }
+  $('#gbg-team-list').replaceChildren(...rows);
+  $('#gbg-pick-hint').textContent = gbgPick
+    ? `Now tap a name to swap with ${gbgPick}, or tap a team to move them there.`
+    : 'Tap a name, then tap another name to swap them, or tap a team to move them there.';
   $('#gbg-team-add').disabled = g.teams.length >= 6;
   $('#gbg-shuffle').disabled = !cls.students.length;
+  $('#gbg-clear').disabled = !g.teams.some(t => t.members.length);
   $('#gbg-names').checked = g.showNames !== false;
   $('#gbg-show-rules').checked = !!g.showRules;
   $('#gbg-rules').value = g.rules.join('\n');
@@ -554,7 +599,7 @@ function fillGbgDialog() {
   $('#gbg-goal').value = g.goal;
   $('#gbg-reward').value = g.reward;
 }
-function openGbgDialog() { fillGbgDialog(); dlgGbg.showModal(); }
+function openGbgDialog() { gbgPick = null; fillGbgDialog(); dlgGbg.showModal(); }
 const gbgSet = (fn, refill) => e => { fn(gbgNow(), e.target); save(); if (refill) fillGbgDialog(); rebuild('gbg'); };
 const num = (v, lo, hi, fallback) => { const n = parseInt(v, 10); return Number.isFinite(n) ? clamp(n, lo, hi) : fallback; };
 $('#gbg-team-add').addEventListener('click', gbgSet(g => { if (g.teams.length < 6) g.teams.push(newTeam(g.teams.length)); }, true));
@@ -563,7 +608,11 @@ $('#gbg-shuffle').addEventListener('click', gbgSet(g => {
   const { groups } = makeGroups(present(cls), g.teams.length,
     { gender: cls.gender, apart: cls.apart, together: cls.together, balance: cls.mix !== false });
   g.teams.forEach((t, i) => { t.members = groups[i] || []; });
+  gbgPick = null;
 }, true));
+$('#gbg-clear').addEventListener('click', () => {
+  if (confirm('Take everyone out of their teams so you can choose by hand?')) gbgEdit(g => g.teams.forEach(t => { t.members = []; }));
+});
 $('#gbg-names').addEventListener('change', gbgSet((g, t) => { g.showNames = t.checked; }));
 $('#gbg-show-rules').addEventListener('change', gbgSet((g, t) => { g.showRules = t.checked; }));
 $('#gbg-rules').addEventListener('input', gbgSet((g, t) => { g.rules = t.value.split('\n').map(s => s.trim()).filter(Boolean); }));
