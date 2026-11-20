@@ -37,6 +37,7 @@ const ICONS = {
   timer: '<circle cx="12" cy="13.5" r="7"/><path d="M12 13.5V10M10 3.5h4"/>',
   note: '<path d="M5 4.5h14v9.5l-5 5H5z"/><path d="M19 14h-5v5"/>',
   hush: '<path d="M4.5 19.5c0-8.3 6.2-14.5 15-15 0 8.8-6.2 15-15 15z"/><path d="M4.5 19.5l8-8"/>',
+  jewels: '<path d="M7.5 4h9l4.5 5.5L12 20.5 3 9.5z"/><path d="M3 9.5h18M9.5 4 8 9.5l4 11 4-11L14.5 4"/>',
   install: '<rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M12 7v6M9 10.5l3 3 3-3M8 20h8"/>',
   gbg: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v3.5M8.5 20h7M10 16.5h4l.5 3.5h-5z"/>',
   list: '<path d="M9 7h10M9 12h10M9 17h10"/><path d="M5 7h.01M5 12h.01M5 17h.01" stroke-width="2.6"/>',
@@ -451,7 +452,7 @@ $('#btn-class').addEventListener('click', openClassDialog);
 /* ---------- switching class (a new class every lesson) ---------- */
 function refreshClass() {
   $('#rail-class-name').textContent = activeClass().name || 'Untitled class';
-  ['picker', 'groups', 'counter', 'gbg'].forEach(rebuild);
+  ['picker', 'groups', 'counter', 'gbg', 'jewels'].forEach(rebuild);
 }
 function switchClass(id) {
   state.activeClass = id;
@@ -1313,6 +1314,432 @@ const WIDGETS = {
       root.append(stage, el('div', { class: 'w-row hb-ctrl' }, go, el('span', { class: 'hb-presets' }, presetBtns), meter, moreBtn));
       stage.append(gallery, set);
       return stop;
+    },
+  },
+
+  /* Magic Jewels: whole-class counting game. Tiles, palettes, item shapes and the
+     characters come from jewels-data.js. Names and results stay in this browser. */
+  jewels: {
+    title: 'Magic Jewels', icon: 'jewels', tone: 'mauve', w: 1000, h: 600, minH: 380,
+    pos: () => {
+      const w = Math.min(1000, innerWidth - 120), h = Math.min(600, innerHeight - 32);
+      return { w, h, x: Math.max(100, Math.round((innerWidth - w) / 2)), y: Math.max(16, Math.round((innerHeight - h) / 2)) };
+    },
+    build(root, d) {
+      const J = window.JEWELS;
+      if (!J) { root.append(el('p', { class: 'note', text: 'Magic Jewels couldn’t load. Reload the page to try again.' })); return; }
+      root.classList.add('mj-root');
+      const node = root.closest('.widget');
+      node?.classList.toggle('mj-max', !!d.max);
+      const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+      d.byClass ||= {};
+      if (!J.themes[d.theme]) d.theme = 'jewels';
+      const cls = activeClass();
+      const S = d.byClass[d.test ? 'test' : cls.id] ||= {};
+      S.pool ||= []; S.chars ||= []; S.history ||= [];
+      const roster = () => d.test ? J.testNames.slice() : present(cls);
+      const total = J.tiles.length;
+      const tileOf = n => J.tiles.find(t => t.n === n);
+      const themeKey = () => (S.game && J.themes[S.game.theme]) ? S.game.theme : d.theme;
+      const themeOf = () => J.themes[themeKey()];
+      const word = n => n === 1 ? themeOf().one : themeOf().noun;
+      const palKeys = Object.keys(J.palettes);
+      const paint = (art, pal) => art.replace(/\{(\d)\}/g, (_, i) => pal[+i] || pal[0]);
+
+      const timers = new Set();
+      const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
+      let idle = null, overlay = null, cur = null, inkCtl = null, busy = false, spinning = false, autoOn = false;
+
+      /* ---- the picture and its 20 covers ---- */
+      const pic = el('div', { class: 'mj-pic' });
+      const covers = el('div', { class: 'mj-covers' });
+      const fx = el('div', { class: 'mj-fx' });
+      const stage = el('div', { class: 'mj-stage' }, pic, covers, fx);
+      const host = el('div', { class: 'mj-host' }, stage);
+      const syncCovers = () => {
+        const done = S.game?.cleared || 0;
+        [...covers.children].forEach(c => {
+          const n = +c.dataset.n;
+          c.classList.toggle('gone', n <= done);
+          c.classList.toggle('next', !!S.game && !S.game.done && n === done + 1);
+        });
+      };
+      const paintPic = () => {
+        const g = S.game, ch = g && J.characters[g.char];
+        pic.className = 'mj-pic' + (ch ? ' k-' + g.char : '');
+        pic.innerHTML = `<svg viewBox="0 0 700 300" aria-hidden="true">${J.background}${ch ? `<g class="mj-char">${ch.art}</g>` : ''}</svg>`;
+        covers.replaceChildren(...J.tiles.map(t => el('div', {
+          class: 'mj-cover', 'data-n': t.n, style: `grid-column:${t.col};grid-row:${t.row} / span ${t.rows || 1}`,
+        }, el('span', { text: String(t.n) }))));
+        fx.replaceChildren();
+        syncCovers();
+      };
+      const anim = (name, ms) => {
+        if (reduce()) return;
+        pic.classList.remove('quirk', 'cheer', 'tilt', 'welcome');
+        void pic.offsetWidth;
+        pic.classList.add(name);
+        later(() => pic.classList.remove(name), ms);
+      };
+      const cellStyle = t => `left:${(t.col - 1) / J.grid.cols * 100}%;top:${(t.row - 1) / J.grid.rows * 100}%;` +
+        `width:${100 / J.grid.cols}%;height:${(t.rows || 1) * 100 / J.grid.rows}%`;
+      const burst = t => {
+        if (reduce()) return;
+        const b = el('div', { class: 'mj-burst', style: cellStyle(t) });
+        const cols = ['#EF9F27', '#D4537E', '#7F77DD'];
+        b.innerHTML = '<svg viewBox="0 0 100 100">' + [[22, 22, 11], [80, 18, 8], [50, 50, 15], [16, 78, 8], [82, 76, 12], [52, 8, 6], [48, 92, 7]]
+          .map(([x, y, r], i) => `<g style="animation-delay:${(i * 0.07).toFixed(2)}s">${J.star(x, y, r, cols[i % 3])}</g>`).join('') + '</svg>';
+        fx.append(b); later(() => b.remove(), 1900);
+      };
+      const toast = text => { const t = el('div', { class: 'mj-toast', role: 'status', text }); fx.append(t); later(() => t.remove(), 2100); };
+
+      /* ---- a counting array: scattered at random, never in a set pattern ---- */
+      const AW = 160, AH = 100;
+      const sparkles = items => {
+        const [lo, hi] = J.sparklesPerArray;
+        const want = lo + Math.floor(Math.random() * (hi - lo + 1));
+        const out = [];
+        for (let t = 0; out.length < want && t < 800; t++) {
+          const r = 2.6 + Math.random() * 2.6, x = 5 + Math.random() * (AW - 10), y = 5 + Math.random() * (AH - 10);
+          if (items.some(o => Math.hypot(o.x - x, o.y - y) < o.k / 2 + r + 1.5)) continue;
+          if (out.some(o => Math.hypot(o.x - x, o.y - y) < 12)) continue;
+          out.push({ x, y, r, c: rand(J.sparkleColours), dl: Math.random() * 2.4 });
+        }
+        return out;
+      };
+      const layout = count => {
+        let s = Math.min(32, Math.sqrt(AW * AH * 0.4 / count));
+        for (let attempt = 0; attempt < 60; attempt++, s *= 0.95) {
+          const items = [];
+          for (let tries = 0; items.length < count && tries < 4000; tries++) {
+            const k = s * (0.88 + Math.random() * 0.24);
+            const x = k / 2 + 3 + Math.random() * (AW - k - 6), y = k / 2 + 3 + Math.random() * (AH - k - 6);
+            if (items.some(o => Math.hypot(o.x - x, o.y - y) < (o.k + k) / 2 * 1.06)) continue;
+            items.push({ x, y, k, r: Math.random() * 36 - 18, p: rand(palKeys) });
+          }
+          if (items.length === count) return { items, sparkles: sparkles(items) };
+        }
+        return { items: [], sparkles: [] };
+      };
+      const arraySvg = lay => {
+        const art = themeOf().art;
+        const items = lay.items.map(o => `<g transform="translate(${o.x.toFixed(1)} ${o.y.toFixed(1)}) rotate(${o.r.toFixed(0)}) scale(${(o.k / 40).toFixed(3)}) translate(-20 -20)">${paint(art, J.palettes[o.p])}</g>`).join('');
+        const sp = lay.sparkles.map(o => `<g class="mj-spark" style="animation-delay:${o.dl.toFixed(2)}s">${J.star(+o.x.toFixed(1), +o.y.toFixed(1), +o.r.toFixed(1), o.c)}</g>`).join('');
+        return `<svg viewBox="0 0 ${AW} ${AH}" role="img" aria-label="A group of ${themeOf().noun} to count">${sp}${items}</svg>`;
+      };
+      const itemIcon = k => {
+        const s = el('span', { class: 'mj-theme-ico', 'aria-hidden': 'true' });
+        s.innerHTML = `<svg viewBox="0 0 40 40">${paint(J.themes[k].art, J.palettes[palKeys[Object.keys(J.themes).indexOf(k) % palKeys.length]])}</svg>`;
+        return s;
+      };
+
+      /* ---- writing pad over the array ---- */
+      const ink = canvas => {
+        const ctx = canvas.getContext('2d');
+        let last = null;
+        const pen = () => {
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ctx.fillStyle = '#ffffff';
+          ctx.lineWidth = clamp(canvas.clientHeight / 32, 6, 16);
+          ctx.shadowColor = 'rgba(25, 20, 50, .9)'; ctx.shadowBlur = 5;
+        };
+        const fit = () => {
+          const dpr = devicePixelRatio || 1;
+          canvas.width = Math.round(canvas.clientWidth * dpr); canvas.height = Math.round(canvas.clientHeight * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0); pen();
+        };
+        const at = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+        canvas.addEventListener('pointerdown', e => {
+          e.preventDefault(); canvas.setPointerCapture(e.pointerId); last = at(e);
+          ctx.beginPath(); ctx.arc(last[0], last[1], ctx.lineWidth / 2, 0, 7); ctx.fill();
+        });
+        canvas.addEventListener('pointermove', e => {
+          if (!last) return;
+          const p = at(e);
+          ctx.beginPath(); ctx.moveTo(...last); ctx.lineTo(...p); ctx.stroke(); last = p;
+        });
+        const up = () => { last = null; };
+        canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+        const ro = new ResizeObserver(fit); ro.observe(canvas);
+        return { clear: () => { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.restore(); }, stop: () => ro.disconnect() };
+      };
+
+      /* ---- bar: spinner, progress, controls ---- */
+      const nameBox = el('div', { class: 'mj-name-box', role: 'status', 'aria-live': 'polite' });
+      const spinBtn = el('button', { class: 'w-btn go', text: 'Spin', onclick: () => spin() });
+      const info = el('span', { class: 'mj-info' });
+      const fullBtn = el('button', { class: 'w-btn', onclick: () => setMax(!d.max) });
+      const endBtn = el('button', { class: 'w-btn', text: 'End game', onclick: () => endGame() });
+      const setPanel = el('div', { class: 'mj-set', hidden: true });
+      const bar = el('div', { class: 'mj-bar' }, nameBox, spinBtn, info, el('span', { class: 'mj-grow' }),
+        el('button', { class: 'w-btn round', text: '⋯', title: 'Settings', 'aria-label': 'Game settings', onclick: () => toggleSet() }),
+        fullBtn, endBtn);
+      const showName = t => {
+        nameBox.textContent = t || 'Spin to choose a counter';
+        nameBox.classList.toggle('blank', !t);
+      };
+      const syncBar = () => {
+        const g = S.game, live = !!g && !g.done && g.cleared < total;
+        spinBtn.disabled = !live || !!g.turn || spinning || !roster().length;
+        endBtn.disabled = !live;
+        fullBtn.textContent = d.max ? 'Exit full screen' : 'Full screen';
+        if (!live) { info.textContent = ''; showName(''); return; }
+        info.textContent = g.turn ? `Tile ${g.cleared + 1}` : `Next: tile ${g.cleared + 1} of ${total}`;
+        if (!spinning) showName(g.turn ? (g.turn.phase === 'class' ? 'The class' : g.turn.name) : '');
+      };
+      const setMax = on => {
+        d.max = on; node?.classList.toggle('mj-max', on); save(); syncBar();
+        if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+        else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      };
+
+      /* ---- spinners: each name (and each character) once before any repeats ---- */
+      const takeName = () => {
+        const here = roster();
+        S.pool = S.pool.filter(n => here.includes(n));
+        if (!S.pool.length) S.pool = here.slice();
+        const name = rand(S.pool);
+        S.pool = S.pool.filter(n => n !== name);
+        return name;
+      };
+      const takeChar = () => {
+        const all = Object.keys(J.characters);
+        S.chars = S.chars.filter(k => all.includes(k));
+        if (!S.chars.length) S.chars = all.slice();
+        const k = rand(S.chars);
+        S.chars = S.chars.filter(x => x !== k);
+        return k;
+      };
+      const pickCount = n => { const t = tileOf(n); return t.min + Math.floor(Math.random() * (t.max - t.min + 1)); };
+
+      const spin = () => {
+        const g = S.game;
+        if (!g || g.done || g.cleared >= total || g.turn || spinning || overlay) return;
+        const here = roster();
+        if (!here.length) return;
+        const winner = takeName();
+        save();
+        spinning = true; setPanel.hidden = true; syncBar();
+        nameBox.classList.remove('pop');
+        const land = () => {
+          spinning = false;
+          showName(winner);
+          g.turn = { name: winner, count: pickCount(g.cleared + 1), phase: 'child' };
+          g.turns++; save(); syncBar();
+          if (!reduce()) { void nameBox.offsetWidth; nameBox.classList.add('pop'); }
+          later(openTurn, reduce() ? 300 : 900);
+        };
+        if (reduce() || here.length < 2) { land(); return; }
+        let i = 0, wait = 45;
+        const step = () => {
+          if (++i > 20) { land(); return; }
+          let n;
+          do n = rand(here); while (n === nameBox.textContent);
+          showName(n); wait *= 1.13; later(step, wait);
+        };
+        step();
+      };
+
+      /* ---- one turn: show the next tile's array big, write, then tap the number ---- */
+      const closeTurn = () => { inkCtl?.stop(); inkCtl = null; overlay?.remove(); overlay = null; cur = null; busy = false; };
+      const openTurn = () => {
+        const g = S.game, t = g?.turn;
+        if (!t || overlay || g.done) return;
+        const n = g.cleared + 1;
+        const ask = el('h3', { class: 'mj-ask' });
+        const sub = el('p', { class: 'mj-sub' });
+        const art = el('div', { class: 'mj-art' });
+        art.innerHTML = arraySvg(layout(t.count));       // a fresh layout every time the tile is shown
+        const canvas = el('canvas', { class: 'mj-ink', 'aria-label': 'Write the number here' });
+        const keys = el('div', { class: 'mj-keys', role: 'group', 'aria-label': 'Tap the number' },
+          Array.from({ length: 20 }, (_, i) => el('button', { class: 'mj-key', text: String(i + 1), onclick: () => answer(i + 1) })));
+        const passBtn = el('button', { class: 'w-btn', text: 'Pass to the class', onclick: () => pass() });
+        overlay = el('div', { class: 'mj-turn', role: 'dialog', 'aria-label': `Tile ${n}` },
+          el('div', { class: 'mj-turn-head' }, el('span', { class: 'mj-tile-no', text: `Tile ${n}` }), ask, sub),
+          el('div', { class: 'mj-board' }, art, canvas),
+          keys,
+          el('div', { class: 'mj-turn-foot' },
+            el('button', { class: 'w-btn', text: 'Rub out', onclick: () => inkCtl?.clear() }),
+            passBtn,
+            d.test ? el('span', { class: 'mj-peek', text: `Test answer: ${t.count}` }) : null,
+            el('span', { class: 'mj-grow' }),
+            el('button', { class: 'w-btn', text: 'Skip this turn', title: 'Close without an answer', onclick: () => {
+              closeTurn(); g.turn = null; save(); syncBar();
+            } })));
+        const words = () => {
+          const cl = t.phase === 'class';
+          overlay.classList.toggle('class', cl);
+          ask.textContent = cl ? `Class, how many ${themeOf().noun}?` : `${t.name}, how many ${themeOf().noun}?`;
+          sub.textContent = cl ? 'Count together, then tap the number.' : `Write the number over the ${themeOf().noun}, then tap it below.`;
+          passBtn.hidden = cl;
+        };
+        cur = { ask, sub, keys, words };
+        words();
+        root.append(overlay);
+        inkCtl = ink(canvas);
+        syncBar();
+      };
+      const answer = v => {
+        const g = S.game, t = g?.turn;
+        if (!t || busy || !cur) return;
+        busy = true;
+        cur.keys.querySelectorAll('button').forEach(b => { b.disabled = true; b.classList.toggle('picked', +b.textContent === v); });
+        if (v === t.count) {
+          overlay.classList.add('right');
+          cur.ask.textContent = `Yes! ${t.count} ${word(t.count)}!`;
+          cur.sub.textContent = t.phase === 'class' ? 'Well counted, everyone!' : `Well counted, ${t.name}!`;
+          later(() => { closeTurn(); clearTile(); }, reduce() ? 1000 : 1700);
+        } else {
+          overlay.classList.add('wrong');
+          cur.ask.textContent = 'Not this time.';
+          cur.sub.textContent = 'The tile stays where it is. Spin for the next counter.';
+          later(() => { closeTurn(); g.turn = null; save(); syncBar(); anim('tilt', 1600); autoNext(); }, 2000);
+        }
+      };
+      const pass = () => {
+        const t = S.game?.turn;
+        if (!t || busy || !cur || t.phase === 'class') return;
+        t.phase = 'class'; S.game.passes++; save();
+        inkCtl?.clear(); cur.words(); syncBar();
+      };
+      const clearTile = () => {
+        const g = S.game;
+        g.cleared++; g.turn = null; save();
+        const n = g.cleared;
+        syncCovers(); burst(tileOf(n));
+        if (n >= total) { welcome(); return; }
+        anim('cheer', 1500);
+        toast(`Tile ${n} uncovered!`);
+        syncBar(); autoNext();
+      };
+      const welcome = () => {
+        const ch = J.characters[S.game.char];
+        beep(); syncBar();
+        if (!reduce()) { pic.classList.remove('quirk', 'cheer', 'tilt'); void pic.offsetWidth; pic.classList.add('welcome'); }
+        fx.append(el('div', { class: 'mj-welcome', role: 'status' }, el('span', { text: 'Meet' }), el('strong', { text: ch.title })));
+        later(() => finish(true), reduce() ? 3500 : 5200);
+      };
+
+      /* ---- start, end and results ---- */
+      const startGame = () => {
+        if (!roster().length) return;
+        S.game = { char: takeChar(), theme: d.theme, cleared: 0, turn: null, turns: 0, passes: 0, started: today(), done: false };
+        save(); render();
+      };
+      const finish = found => {
+        const g = S.game;
+        if (!g || g.done) return;
+        closeTurn();
+        Object.assign(g, { done: true, found, turn: null });
+        S.history.unshift({ date: today(), char: g.char, found, cleared: g.cleared, turns: g.turns, passes: g.passes });
+        S.history.length = Math.min(S.history.length, 40);
+        if (!found && !S.chars.includes(g.char)) S.chars.push(g.char);   // not met yet, so it can come back
+        if (!found) beep();
+        save(); render();
+      };
+      const endGame = () => {
+        if (!S.game || S.game.done || S.game.cleared >= total) return;
+        if (confirm('End this game now? The mystery friend stays hidden for another day.')) finish(false);
+      };
+      const setTest = on => { d.test = on; save(); rebuild('jewels'); };
+
+      const startCard = () => {
+        const here = roster();
+        return el('div', { class: 'mj-start' },
+          el('h3', { class: 'mj-title', text: 'Magic Jewels' }),
+          el('p', { class: 'mj-lead', text: 'Count what’s on each tile to uncover a mystery friend.' }),
+          el('div', { class: 'mj-themes', role: 'group', 'aria-label': 'Choose what to count' },
+            Object.entries(J.themes).map(([k, th]) => el('button', {
+              class: 'mj-theme' + (k === d.theme ? ' on' : ''), 'aria-pressed': String(k === d.theme),
+              onclick: () => { d.theme = k; save(); render(); },
+            }, itemIcon(k), el('span', { text: th.name })))),
+          here.length ? null : el('p', { class: 'mj-lead', text: 'There are no names in this class yet. Add a class list, or try test mode.' }),
+          el('div', { class: 'w-row' },
+            el('button', { class: 'w-btn go', text: 'Start game', disabled: !here.length, onclick: startGame }),
+            here.length ? null : el('button', { class: 'w-btn', text: 'Add class list', onclick: openClassDialog }),
+            el('button', { class: 'w-btn', text: d.test ? 'Leave test mode' : 'Test mode', onclick: () => setTest(!d.test) })),
+          el('p', { class: 'mj-small', text: d.test
+            ? 'Test mode uses made-up names and shows the answer on each tile.'
+            : `For ${cls.name || 'this class'}. Names and games are saved only on this device.` }));
+      };
+      const results = () => {
+        const g = S.game, ch = J.characters[g.char];
+        const met = [...new Set(S.history.filter(h => h.found).map(h => J.characters[h.char]?.name).filter(Boolean))];
+        const helped = g.passes === 1 ? 'once' : `${g.passes} times`;
+        return el('div', { class: 'mj-results', role: 'status' },
+          el('div', { class: 'mj-res-text' },
+            el('h3', { text: g.found ? `You found ${ch.title}!` : 'That’s the end of this game' }),
+            el('p', { text: g.found
+              ? `All ${total} tiles uncovered in ${g.turns} turns.` + (g.passes ? ` The class helped ${helped}.` : '')
+              : `${g.cleared} of ${total} tiles uncovered. The mystery friend stays hidden for another day.` }),
+            met.length ? el('p', { class: 'mj-met', text: `Friends ${d.test ? 'found in test mode' : `${cls.name || 'this class'} has met`}: ${met.join(', ')}` }) : null),
+          el('div', { class: 'w-row' },
+            el('button', { class: 'w-btn go', text: 'New game', onclick: () => { S.game = null; save(); render(); } }),
+            fullBtn));
+      };
+      const toggleSet = () => {
+        if (!setPanel.hidden) { setPanel.hidden = true; return; }
+        const here = roster();
+        const left = S.pool.filter(n => here.includes(n)).length || here.length;
+        setPanel.replaceChildren(...[
+          el('div', { class: 'mj-set-row' }, el('span', { text: 'Count' }),
+            el('span', { class: 'mj-set-opts' }, Object.entries(J.themes).map(([k, th]) => el('button', {
+              class: 'w-btn' + (k === themeKey() ? ' on' : ''), text: th.name, onclick: () => {
+                d.theme = k; if (S.game) S.game.theme = k; save(); setPanel.hidden = true;
+                if (overlay && !busy) { closeTurn(); openTurn(); }
+              } })))),
+          el('div', { class: 'mj-set-row' }, el('span', { text: `Spinner: ${left} of ${here.length} names left` }),
+            el('button', { class: 'w-btn', text: 'Start the names again', onclick: () => { S.pool = []; save(); setPanel.hidden = true; } })),
+          !d.test && state.classes.length > 1 ? el('div', { class: 'mj-set-row' }, el('span', { text: 'Class' }), classSwitch()) : null,
+          el('div', { class: 'mj-set-row' }, el('span', { text: 'Test mode (made-up names)' }),
+            el('button', { class: 'w-btn', text: d.test ? 'Turn off' : 'Turn on', onclick: () => setTest(!d.test) })),
+          d.test ? el('div', { class: 'mj-set-row' }, el('span', { text: 'Play the whole game by itself' }),
+            el('button', { class: 'w-btn', text: autoOn ? 'Stop' : 'Play it for me', onclick: () => {
+              autoOn = !autoOn; setPanel.hidden = true; if (autoOn) autoNext();
+            } })) : null,
+          el('p', { class: 'mj-set-note', text: 'Games save as you go, so you can close Magic Jewels or switch class and carry on later. Names and results stay on this device.' }),
+        ].filter(Boolean));
+        setPanel.hidden = false;
+      };
+
+      /* test mode: plays turns by itself (mostly right, some wrong, some passes) */
+      const autoNext = () => {
+        if (!autoOn || !d.test) return;
+        later(() => {
+          if (!autoOn) return;
+          const g = S.game;
+          if (!g) { startGame(); autoNext(); return; }
+          if (g.done) { autoOn = false; return; }
+          if (!g.turn && !spinning) spin();
+          else if (overlay && !busy) {
+            const t = g.turn, r = Math.random();
+            if (t.phase === 'child' && r < 0.15) { pass(); autoNext(); return; }
+            answer(r < 0.85 ? t.count : t.count % 20 + 1);
+            return;
+          }
+          autoNext();
+        }, 900);
+      };
+
+      const render = () => {
+        closeTurn(); setPanel.hidden = true;
+        paintPic();
+        const g = S.game;
+        root.replaceChildren(...[
+          d.test ? el('p', { class: 'mj-test-flag', text: 'Test mode: made-up names, and the answer shows on each tile' }) : null,
+          host,
+          g?.done ? results() : bar,
+          g ? null : startCard(),
+          setPanel,
+        ].filter(Boolean));
+        syncBar();
+        if (g && !g.done && g.cleared >= total) later(() => finish(true), 300);   // closed during the welcome
+        else if (g?.turn && !g.done) openTurn();
+      };
+      render();
+      idle = setInterval(() => {
+        if (S.game && !S.game.done && !overlay && !spinning && document.visibilityState === 'visible') anim('quirk', 2400);
+      }, 11000);
+      return () => { timers.forEach(clearTimeout); timers.clear(); clearInterval(idle); closeTurn(); };
     },
   },
 
