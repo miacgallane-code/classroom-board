@@ -2,10 +2,10 @@
    After the first visit everything the board needs is kept on this device, so it opens
    with no internet, and even if a network filter later blocks the site.
    Bump VERSION whenever the app files change so devices pick up the update. */
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE = `classroom-board-${VERSION}`;
 const CORE = [
-  './', './index.html', './styles.css', './app.js', './manifest.webmanifest', './classes.locked.js',
+  './', './index.html', './styles.css', './app.js', './manifest.webmanifest', './classes.locked.js', './hush-data.js',
   './icon.svg', './icon-192.png', './icon-512.png',
   './fonts/EduNSWACTFoundation-VariableFont_wght.ttf',
 ];
