@@ -36,6 +36,7 @@ const ICONS = {
   counter: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M7 9h4M9 7v4M13 15h4"/>',
   timer: '<circle cx="12" cy="13.5" r="7"/><path d="M12 13.5V10M10 3.5h4"/>',
   note: '<path d="M5 4.5h14v9.5l-5 5H5z"/><path d="M19 14h-5v5"/>',
+  hush: '<path d="M4.5 19.5c0-8.3 6.2-14.5 15-15 0 8.8-6.2 15-15 15z"/><path d="M4.5 19.5l8-8"/>',
   install: '<rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M12 7v6M9 10.5l3 3 3-3M8 20h8"/>',
   gbg: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v3.5M8.5 20h7M10 16.5h4l.5 3.5h-5z"/>',
   list: '<path d="M9 7h10M9 12h10M9 17h10"/><path d="M5 7h.01M5 12h.01M5 17h.01" stroke-width="2.6"/>',
@@ -686,6 +687,70 @@ $('#gbg-reset').addEventListener('click', () => {
 /* ---------- the widgets ---------- */
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 
+/* ---------- Hush Bush: a calm bush scene that fills with shy animals while the room is quiet ---------- */
+const HUSH_GOALS = { silent: 32, whisper: 48, partner: 64 };   // 0–100 loudness scale
+/* where animals can sit, as % of the scene (x = centre, y = feet) */
+const HUSH_SLOTS = {
+  g0: { type: 'ground', x: 28, y: 90 }, g1: { type: 'ground', x: 46, y: 77.6 }, g2: { type: 'ground', x: 61, y: 84 },
+  g3: { type: 'ground', x: 37, y: 98 }, g4: { type: 'ground', x: 21, y: 97 }, g5: { type: 'ground', x: 50, y: 98 },
+  w0: { type: 'water', x: 76, y: 89 }, w1: { type: 'water', x: 89, y: 90 },
+  t0: { type: 'tree', x: 27.5, y: 42 }, t1: { type: 'tree', x: 7.5, y: 52.5 },
+  k0: { type: 'trunk', x: 14.3, y: 70 },
+  a0: { type: 'air', x: 42, y: 36 }, a1: { type: 'air', x: 64, y: 26 }, a2: { type: 'air', x: 88, y: 58 },
+};
+const eye = (x, y, r = 1.8) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#34333b"/><circle cx="${x - r * .35}" cy="${y - r * .35}" r="${(r * .35).toFixed(2)}" fill="#fff"/>`;
+const blush = (x, y) => `<ellipse cx="${x}" cy="${y}" rx="2.6" ry="1.6" fill="#d7b6c2" opacity=".9"/>`;
+const HUSH_CRITTERS = {
+  wren: { name: 'Fairy-wren', size: 7, weight: 10, spots: ['tree', 'ground'], art:
+    `<path d="M21 41 10 18q4-3 7 2l9 16z" fill="#426a75"/><ellipse cx="30" cy="43" rx="12" ry="9" fill="#a3bfc7"/><ellipse cx="31" cy="47" rx="8" ry="4.5" fill="#f3f3ea"/><circle cx="39" cy="33" r="7.5" fill="#7fa4ae"/><path d="m45.5 33 5 1.2-5 1.6z" fill="#34333b"/>${eye(41, 32)}${blush(40, 36.5)}<path d="M28 51v6M33 51v6" stroke="#6f6d78" stroke-width="1.4" stroke-linecap="round"/>` },
+  butterfly: { name: 'Butterfly', size: 6, weight: 10, spots: ['air'], art:
+    `<g class="hb-wings"><path d="M30 30C20 14 6 18 10 30c2 6 12 6 20 2zM30 30c10-16 24-12 20 0-2 6-12 6-20 2z" fill="#b69fb4"/><path d="M30 33c-8 3-16 11-10 15 5 2 9-6 10-12zM30 33c8 3 16 11 10 15-5 2-9-6-10-12z" fill="#d7b6c2"/></g><rect x="28.6" y="24" width="2.8" height="22" rx="1.4" fill="#34333b"/><path d="M29 25q-3-7-6-9M31 25q3-7 6-9" stroke="#34333b" stroke-width="1" fill="none" stroke-linecap="round"/>` },
+  frog: { name: 'Frog', size: 7.5, weight: 9, spots: ['water'], art:
+    `<ellipse cx="30" cy="55" rx="22" ry="4.5" fill="#b9c58a"/><ellipse cx="30" cy="45" rx="14" ry="10" fill="#c8d29d"/><circle cx="23" cy="35" r="5.5" fill="#c8d29d"/><circle cx="37" cy="35" r="5.5" fill="#c8d29d"/>${eye(23, 35, 2.2)}${eye(37, 35, 2.2)}<ellipse cx="30" cy="49" rx="8" ry="4.5" fill="#ecefdd"/><path d="M24 44q6 4 12 0" stroke="#616d2c" stroke-width="1.4" fill="none" stroke-linecap="round"/>${blush(20, 43)}${blush(40, 43)}` },
+  snail: { name: 'Snail', size: 6, weight: 8, spots: ['ground'], art:
+    `<path d="M8 57q0-6 8-6h28q6 0 6-6l2-6q3-2 4 2l-1 10q-1 6-9 6z" fill="#deddc3"/><circle cx="28" cy="40" r="13" fill="#d7b6c2"/><path d="M28 40m0-1a3 3 0 1 1-3 3 6 6 0 1 1 6 6 9 9 0 1 1-9-9" fill="none" stroke="#9c4e6a" stroke-width="1.6" stroke-linecap="round" opacity=".55"/><path d="m52 40 2-9m1 9 3-8" stroke="#b5b38f" stroke-width="1.4" stroke-linecap="round"/><circle cx="54" cy="31" r="1.6" fill="#34333b"/><circle cx="58" cy="32" r="1.6" fill="#34333b"/>` },
+  echidna: { name: 'Echidna', size: 9.5, weight: 7, spots: ['ground'], art:
+    `<g stroke="#6f6d38" stroke-width="1.7" stroke-linecap="round"><path d="m12 46-6-4m8-3-5-6m9 0-3-7m9-1v-7m7 7 2-7m5 9 5-5m-2 9 6-3m-31 18-6-1m10-12-5-5m13 1-2-6m9 2 2-6"/></g><path d="M8 57q0-25 22-27 18 0 22 16l6 4q0 3-4 3l-4 4z" fill="#deddc3"/><g stroke="#6f6d38" stroke-width="1.5" stroke-linecap="round" opacity=".7"><path d="m16 44-3-3m8-2-2-4m7 1v-4m6 4 1-4m5 7 3-3"/></g><ellipse cx="46" cy="48" rx="7" ry="6" fill="#ece9d6"/>${eye(46, 46, 1.7)}<path d="M51 49h6" stroke="#b5b38f" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="18" cy="57" rx="4" ry="2" fill="#b5b38f"/><ellipse cx="40" cy="57" rx="4" ry="2" fill="#b5b38f"/>` },
+  wombat: { name: 'Wombat', size: 12, weight: 7, spots: ['ground'], art:
+    `<path d="M6 57Q4 31 28 29q22 0 26 17 2 11-6 11z" fill="#cdbfae"/><path d="m38 31 2-7 5 6zm7 3 5-5 2 7z" fill="#cdbfae"/><ellipse cx="53" cy="45" rx="4" ry="3.2" fill="#6f6362"/>${eye(46, 40)}${blush(47, 47)}<rect x="12" y="53" width="9" height="5" rx="2.5" fill="#b5a796"/><rect x="38" y="53" width="9" height="5" rx="2.5" fill="#b5a796"/>` },
+  kookaburra: { name: 'Kookaburra', size: 9, weight: 7, spots: ['tree'], art:
+    `<path d="m20 52-6 8 10-2z" fill="#8fa9b1"/><ellipse cx="28" cy="41" rx="12" ry="14" fill="#ece9d6"/><path d="M16 33q-4 16 6 24l8-2q0-14-6-22z" fill="#a3bfc7"/><circle cx="32" cy="24" r="10" fill="#ece9d6"/><path d="M23 21q7-7 17-1v4q-8-4-17 1z" fill="#cdbfae"/><path d="M31 27h10" stroke="#8a7f6e" stroke-width="2.2" stroke-linecap="round"/><path d="m40 24 14 3-14 3z" fill="#6f6d78"/>${eye(36, 24, 2)}<path d="M26 55v3m5-3v3" stroke="#9a98a3" stroke-width="1.6" stroke-linecap="round"/>` },
+  galah: { name: 'Galah', size: 8.5, weight: 7, spots: ['tree', 'ground'], art:
+    `<path d="M14 30q-6 16 4 26h12q-2-16-8-26z" fill="#c9c7cf"/><ellipse cx="30" cy="41" rx="11" ry="14" fill="#d7b6c2"/><circle cx="34" cy="25" r="9" fill="#d7b6c2"/><path d="M27 21q6-7 14-1-7-1-14 3z" fill="#f1e5ea"/><path d="M41 26q6 1 3 6-3-2-4-3z" fill="#ece9d6"/>${eye(37, 24)}<path d="M27 55v3m6-3v3" stroke="#9a98a3" stroke-width="1.6" stroke-linecap="round"/>` },
+  koala: { name: 'Koala', size: 10, weight: 6, spots: ['trunk'], art:
+    `<circle cx="16" cy="18" r="8" fill="#c9c7cf"/><circle cx="44" cy="18" r="8" fill="#c9c7cf"/><circle cx="16" cy="18" r="4.5" fill="#f1e5ea"/><circle cx="44" cy="18" r="4.5" fill="#f1e5ea"/><ellipse cx="30" cy="45" rx="13" ry="13" fill="#c9c7cf"/><ellipse cx="30" cy="48" rx="7" ry="7" fill="#ebebef"/><circle cx="30" cy="27" r="12" fill="#c9c7cf"/><ellipse cx="30" cy="30" rx="3.6" ry="4.6" fill="#5a5862"/>${eye(24, 25, 1.7)}${eye(36, 25, 1.7)}${blush(22, 31)}${blush(38, 31)}<path d="M18 41q-4 6 2 10m22-10q4 6-2 10" stroke="#b3b1ba" stroke-width="4" stroke-linecap="round" fill="none"/>` },
+  kangaroo: { name: 'Kangaroo', size: 13, weight: 5, spots: ['ground'], art:
+    `<path d="M14 53Q2 56 2 58h16z" fill="#cdb7aa"/><path d="M12 57q-2-22 14-26 10-2 12 8 2 12-4 18z" fill="#d9c4b7"/><ellipse cx="28" cy="45" rx="6" ry="9" fill="#ece0d6"/><ellipse cx="28" cy="57" rx="12" ry="2.6" fill="#cdb7aa"/><ellipse cx="35" cy="30" rx="5.5" ry="7" fill="#d9c4b7"/><path d="m33 18-2-12 6 8zm5-1 1-12 3 10z" fill="#cdb7aa"/><ellipse cx="38" cy="22" rx="7" ry="6.5" fill="#d9c4b7"/><ellipse cx="45" cy="25" rx="5" ry="3.5" fill="#d9c4b7"/><circle cx="49.5" cy="24.5" r="1.4" fill="#5a5862"/>${eye(40, 20, 1.6)}<path d="M36 39q6 4 4 8" stroke="#cdb7aa" stroke-width="3" stroke-linecap="round" fill="none"/>` },
+  quokka: { name: 'Quokka', size: 8, weight: 6, spots: ['ground'], art:
+    `<ellipse cx="30" cy="47" rx="13" ry="11" fill="#cdbfa8"/><circle cx="20" cy="22" r="5" fill="#cdbfa8"/><circle cx="40" cy="22" r="5" fill="#cdbfa8"/><circle cx="20" cy="22" r="2.4" fill="#f1e5ea"/><circle cx="40" cy="22" r="2.4" fill="#f1e5ea"/><circle cx="30" cy="31" r="11" fill="#d6c9b4"/><ellipse cx="30" cy="34" rx="2.6" ry="2" fill="#5a5862"/><path d="M26 37q4 4 8 0" stroke="#5a5862" stroke-width="1.3" fill="none" stroke-linecap="round"/>${eye(25, 29, 1.7)}${eye(35, 29, 1.7)}${blush(22, 35)}${blush(38, 35)}<circle cx="25" cy="47" r="2.6" fill="#bfae95"/><circle cx="35" cy="47" r="2.6" fill="#bfae95"/>` },
+  platypus: { name: 'Platypus', size: 12, weight: 1.6, spots: ['water'], art:
+    `<ellipse cx="8" cy="51" rx="7" ry="4" fill="#9d879b"/><ellipse cx="26" cy="49" rx="18" ry="8" fill="#b69fb4"/><path d="M42 46q14-2 15 3-1 4-15 3z" fill="#765673"/>${eye(38, 45, 1.7)}<rect x="0" y="52" width="60" height="8" fill="#a3bfc7" opacity=".6"/><path d="M4 54q6-2 12 0t12 0 12 0 12 0" stroke="#dfe9eb" stroke-width="1.6" fill="none" stroke-linecap="round"/>` },
+  lyrebird: { name: 'Lyrebird', size: 13, weight: 1.6, spots: ['ground'], art:
+    `<g fill="none" stroke-linecap="round" stroke-width="3"><path d="M24 50Q2 40 4 18" stroke="#deddc3"/><path d="M24 50Q6 30 14 8" stroke="#b69fb4"/><path d="M24 50Q14 24 26 6" stroke="#deddc3"/><path d="M24 50q0-24 12-40" stroke="#b69fb4"/></g><circle cx="4" cy="17" r="2.6" fill="#deddc3"/><circle cx="14" cy="7" r="2.6" fill="#b69fb4"/><circle cx="26" cy="5" r="2.6" fill="#deddc3"/><circle cx="36" cy="9" r="2.6" fill="#b69fb4"/><ellipse cx="34" cy="47" rx="10" ry="8" fill="#b0a7a3"/><circle cx="43" cy="37" r="5.5" fill="#b0a7a3"/><path d="m48 37 5 1-5 2z" fill="#5a5862"/>${eye(44.5, 36, 1.4)}<path d="M32 54v4m5-4v4" stroke="#8b8488" stroke-width="1.6" stroke-linecap="round"/>` },
+  possum: { name: 'Possum', size: 9.5, weight: 1.8, spots: ['tree'], art:
+    `<path d="M40 50q12 6 10 10-4 2-4-2" stroke="#b3b1ba" stroke-width="3" fill="none" stroke-linecap="round"/><ellipse cx="30" cy="47" rx="12" ry="10" fill="#b3b1ba"/><ellipse cx="19" cy="22" rx="4.5" ry="6.5" fill="#b3b1ba"/><ellipse cx="41" cy="22" rx="4.5" ry="6.5" fill="#b3b1ba"/><ellipse cx="19" cy="23" rx="2.2" ry="3.8" fill="#f1e5ea"/><ellipse cx="41" cy="23" rx="2.2" ry="3.8" fill="#f1e5ea"/><circle cx="30" cy="31" r="10.5" fill="#c9c7cf"/><path d="M30 21v7" stroke="#a09eaa" stroke-width="2" stroke-linecap="round"/>${eye(25.5, 30, 3)}${eye(34.5, 30, 3)}<path d="M28.6 36h2.8L30 37.8z" fill="#9c4e6a"/>` },
+};
+const HUSH_SCENE = `<svg class="hb-bg" viewBox="0 0 400 225" preserveAspectRatio="none" aria-hidden="true">
+  <defs><linearGradient id="hb-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef4f5"/><stop offset="1" stop-color="#ffffff"/></linearGradient></defs>
+  <rect width="400" height="225" fill="url(#hb-sky)"/>
+  <circle cx="332" cy="44" r="22" fill="#f1e5ea"/><circle cx="332" cy="44" r="14" fill="#e8d0d9"/>
+  <g fill="#fff" stroke="#e4e4ea" stroke-width="1.4"><path d="M118 52q6-14 20-8 8-10 20 0 12 0 10 10h-50z"/><path d="M228 32q5-10 15-6 7-8 16 0 9 0 8 8h-39z"/></g>
+  <path d="M0 140q60-28 130-12t130-8 140 8v97H0z" fill="#e5dde5"/>
+  <path d="M0 158q80-22 170-8t160-4 70 4v75H0z" fill="#ecefdd"/>
+  <path d="M0 172q100-12 210-2t190-2v57H0z" fill="#c8d29d"/>
+  <path d="M0 205q120-9 240-1t160-2v23H0z" fill="#bcc78f"/>
+  <ellipse cx="324" cy="197" rx="58" ry="15" fill="#a3bfc7"/><ellipse cx="314" cy="193" rx="34" ry="5.5" fill="#c3d6db"/>
+  <ellipse cx="290" cy="201" rx="7" ry="2.6" fill="#b9c58a"/><ellipse cx="358" cy="195" rx="6" ry="2.2" fill="#b9c58a"/>
+  <rect x="150" y="174.5" width="70" height="16" rx="8" fill="#deddc3"/><ellipse cx="219" cy="182.5" rx="5.5" ry="8" fill="#ece9d6" stroke="#cfcdb0" stroke-width="1.2"/>
+  <path d="M48 182q6-60 2-122h14q-2 60 6 122z" fill="#e7e2d6"/>
+  <path d="M60 104q30-12 68-10v5q-36-1-66 13zM52 124q-18-10-40-8v5q22-1 40 11z" fill="#e7e2d6"/>
+  <path d="M55 150q2-30 0-60M60 170q-1-20 1-40" stroke="#d6d0c0" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+  <g fill="#c8d29d"><ellipse cx="56" cy="44" rx="44" ry="26"/><ellipse cx="100" cy="62" rx="30" ry="15"/><ellipse cx="20" cy="68" rx="26" ry="13"/></g>
+  <g fill="#b9c58a"><ellipse cx="40" cy="36" rx="16" ry="8"/><ellipse cx="78" cy="50" rx="14" ry="7"/><ellipse cx="108" cy="66" rx="12" ry="5"/><ellipse cx="18" cy="72" rx="12" ry="5"/></g>
+  <g stroke="#9aab5f" stroke-width="1.6" stroke-linecap="round" fill="none"><path d="M100 196l3-8 2 8M136 210l2-7 3 7M232 200l3-8 2 8M258 214l2-6 3 6M30 214l2-7 3 7M378 214l2-7 3 7"/></g>
+  <g><circle cx="122" cy="186" r="2.2" fill="#d7b6c2"/><circle cx="246" cy="190" r="2.2" fill="#b69fb4"/><circle cx="198" cy="212" r="2.2" fill="#d7b6c2"/><circle cx="84" cy="206" r="2.2" fill="#b69fb4"/></g>
+</svg>`;
+
 const WIDGETS = {
   picker: {
     title: 'Student picker', icon: 'picker', tone: 'rose', w: 340, h: 280,
@@ -1093,6 +1158,162 @@ const WIDGETS = {
           el('div', { class: 'tbtns' }, go, el('button', { class: 'w-btn round', text: '↺', 'aria-label': 'Reset', onclick: reset }))),
         el('div', { class: 'w-row tpresets' }, presets, modeBtn));
       return () => clearInterval(tick);
+    },
+  },
+
+  hush: {
+    title: 'Hush Bush', icon: 'hush', tone: 'stone', w: 520, h: 340, minH: 220, slim: true,
+    pos: () => ({ x: Math.max(100, Math.round((innerWidth - 520) / 2)), y: Math.max(16, innerHeight - 340 - 120) }),
+    build(root, d) {
+      d.goal ??= HUSH_GOALS.whisper; d.preset ??= 'whisper';
+      d.pace ||= 2; d.mode ||= 'hide';
+      d.out ||= []; d.seen ||= [];
+      d.out = d.out.filter(o => HUSH_CRITTERS[o.k] && HUSH_SLOTS[o.slot]);
+
+      const stage = el('div', { class: 'hb-stage' });
+      const scene = el('div', { class: 'hb-scene' });
+      scene.innerHTML = HUSH_SCENE;
+      const critters = el('div', { class: 'hb-critters' });
+      const haze = el('div', { class: 'hb-haze', 'aria-hidden': 'true' }, el('span', { text: 'Shh… they’re hiding' }));
+      const msg = el('p', { class: 'hb-msg', role: 'status' });
+      const startCard = el('div', { class: 'hb-start' },
+        el('p', { class: 'hb-start-title', text: 'Shh… the bush friends are shy' }),
+        el('p', { class: 'hb-start-sub', text: 'Keep the room calm and they’ll come out one by one.' }),
+        el('button', { class: 'w-btn go', text: 'Start listening', onclick: () => start() }),
+        msg,
+        el('p', { class: 'hb-start-note', text: 'Uses the microphone only to measure how loud the room is. Nothing is recorded or sent anywhere.' }));
+      scene.append(critters, haze, startCard);
+      stage.append(scene);
+
+      /* ---- critters on screen ---- */
+      const drawCritter = (o, isNew) => {
+        const c = HUSH_CRITTERS[o.k], s = HUSH_SLOTS[o.slot];
+        const depth = s.type === 'ground' ? 0.75 + 0.25 * clamp((s.y - 75) / 23, 0, 1) : 1;
+        const node = el('div', { class: 'hb-critter hb-' + s.type + (isNew ? ' new' : ''), title: c.name,
+          style: `left:${s.x}%;top:${s.y}%;width:${(c.size * depth).toFixed(2)}%;--d:${(Math.random() * 2).toFixed(2)}s` });
+        node.innerHTML = `<svg viewBox="0 0 60 60" role="img" aria-label="${c.name}">${c.art}</svg>`;
+        node.dataset.slot = o.slot;
+        critters.append(node);
+      };
+      d.out.forEach(o => drawCritter(o, false));
+
+      const arrive = () => {
+        const used = new Set(d.out.map(o => o.slot));
+        const onScreen = new Set(d.out.map(o => o.k));
+        const options = Object.entries(HUSH_CRITTERS).flatMap(([k, c]) => {
+          const slots = Object.keys(HUSH_SLOTS).filter(id => !used.has(id) && c.spots.includes(HUSH_SLOTS[id].type));
+          return slots.length ? [{ k, slots, w: c.weight * (onScreen.has(k) ? 0.15 : 1) }] : [];
+        });
+        if (!options.length) return;   // the bush is full
+        let r = Math.random() * options.reduce((t, o) => t + o.w, 0);
+        const pick = options.find(o => (r -= o.w) <= 0) || options[options.length - 1];
+        const o = { k: pick.k, slot: pick.slots[Math.floor(Math.random() * pick.slots.length)] };
+        d.out.push(o);
+        if (!d.seen.includes(o.k)) d.seen.push(o.k);
+        save(); drawCritter(o, true); syncSet();
+      };
+      const leaveOne = () => {
+        if (!d.out.length) return;
+        const o = d.out.splice(Math.floor(Math.random() * d.out.length), 1)[0];
+        save();
+        const node = critters.querySelector(`[data-slot="${o.slot}"]:not(.leave)`);
+        if (!node) return;
+        node.style.setProperty('--away', HUSH_SLOTS[o.slot].x < 50 ? '-60vw' : '60vw');
+        node.classList.add('leave');
+        setTimeout(() => node.remove(), 1500);
+      };
+
+      /* ---- listening ---- */
+      let stream = null, ctx = null, an = null, buf = null, timer = null, last = 0;
+      let level = 0, pressure = 0, loud = false, calmFor = 0, quiet = 0, leaveIn = 0;
+      let due = 0;
+      const firstDue = () => 10 + Math.random() * 10;
+      const setLoud = on => { loud = on; scene.classList.toggle('loud', on); };
+      const tick = () => {
+        const t = performance.now(), dt = Math.min(0.5, (t - last) / 1000); last = t;
+        an.getFloatTimeDomainData(buf);
+        let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        const db = 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-9);
+        const raw = clamp((db + 70) / 60 * 100, 0, 100);
+        level = raw > level ? level * 0.6 + raw * 0.4 : level * 0.92 + raw * 0.08;
+        const over = level > d.goal, big = level > d.goal + 15;
+        if (!loud) {
+          pressure = over ? pressure + dt / (big ? 1 : 5) : Math.max(0, pressure - dt / 2);
+          if (pressure >= 1) { setLoud(true); calmFor = 0; leaveIn = 1; }
+        } else {
+          calmFor = over ? 0 : calmFor + dt;
+          if (calmFor >= 2.5) { setLoud(false); pressure = 0; if (!d.out.length) { quiet = 0; due = firstDue(); } }
+        }
+        if (loud) {
+          if (d.mode === 'hide' && (leaveIn -= dt) <= 0) { leaveOne(); leaveIn = 5; }
+        } else if ((quiet += dt) >= due) {
+          quiet = 0; due = d.pace * 60; arrive();
+        }
+        meterFill.style.width = level.toFixed(1) + '%';
+        meter.classList.toggle('over', over);
+      };
+      const start = async () => {
+        msg.textContent = '';
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        } catch (e) {
+          msg.textContent = e && e.name === 'NotFoundError' ? 'No microphone was found on this computer.'
+            : 'The microphone is blocked. Allow it from the icon in the address bar, then try again.';
+          return;
+        }
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        an = ctx.createAnalyser(); an.fftSize = 2048;
+        buf = new Float32Array(an.fftSize);
+        ctx.createMediaStreamSource(stream).connect(an);
+        level = 0; pressure = 0; quiet = 0; due = d.out.length ? d.pace * 60 : firstDue();
+        last = performance.now();
+        timer = setInterval(tick, 100);
+        scene.classList.add('on');
+        go.textContent = 'Stop'; go.setAttribute('aria-label', 'Stop listening');
+      };
+      const stop = () => {
+        clearInterval(timer); timer = null;
+        stream?.getTracks().forEach(t => t.stop()); stream = null;
+        ctx?.close().catch(() => {}); ctx = null;
+        setLoud(false); scene.classList.remove('on');
+        meterFill.style.width = '0%';
+        go.textContent = 'Start'; go.setAttribute('aria-label', 'Start listening');
+      };
+
+      /* ---- teacher controls ---- */
+      const go = el('button', { class: 'w-btn go', text: 'Start', 'aria-label': 'Start listening', onclick: () => timer ? stop() : start() });
+      const goalMark = el('i', { class: 'hb-goal' });
+      const meterFill = el('b');
+      const meter = el('span', { class: 'hb-meter', title: 'Room loudness and the quiet goal' }, meterFill, goalMark);
+      const presetBtns = Object.entries({ silent: 'Silent', whisper: 'Whisper', partner: 'Partners' }).map(([k, t]) =>
+        el('button', { class: 'w-btn', text: t, onclick: () => { d.preset = k; d.goal = HUSH_GOALS[k]; save(); syncSet(); } }));
+      const set = el('div', { class: 'hb-set', hidden: true });
+      const moreBtn = el('button', { class: 'w-btn round', text: '⋯', 'aria-label': 'Hush Bush settings', 'aria-expanded': 'false',
+        onclick: () => { set.hidden = !set.hidden; moreBtn.setAttribute('aria-expanded', String(!set.hidden)); } });
+      const choice = (label, opts, get, put) => el('div', { class: 'hb-set-row' }, el('span', { text: label }),
+        el('span', { class: 'hb-set-opts' }, opts.map(([v, t]) =>
+          el('button', { class: 'w-btn' + (get() === v ? ' on' : ''), text: t, onclick: () => { put(v); save(); syncSet(); } }))));
+      const syncSet = () => {
+        presetBtns.forEach((b, i) => b.classList.toggle('on', d.preset === ['silent', 'whisper', 'partner'][i]));
+        goalMark.style.left = d.goal + '%';
+        const total = Object.keys(HUSH_CRITTERS).length;
+        set.replaceChildren(
+          choice('New friend every', [[1, '1 min'], [2, '2 min'], [5, '5 min']], () => d.pace, v => { d.pace = v; if (due > v * 60) due = v * 60; }),
+          choice('When it’s too loud', [['hide', 'They hide'], ['pause', 'Just pause']], () => d.mode, v => { d.mode = v; }),
+          el('div', { class: 'hb-set-row' }, el('span', { text: 'Fine-tune the goal' }),
+            el('span', { class: 'hb-set-opts' },
+              el('button', { class: 'w-btn round', text: '−', 'aria-label': 'Stricter (quieter)', onclick: () => { d.goal = clamp(d.goal - 4, 5, 95); d.preset = ''; save(); syncSet(); } }),
+              el('button', { class: 'w-btn round', text: '+', 'aria-label': 'Looser (louder)', onclick: () => { d.goal = clamp(d.goal + 4, 5, 95); d.preset = ''; save(); syncSet(); } }))),
+          el('div', { class: 'hb-set-row' }, el('span', { text: `Friends spotted: ${d.seen.length} of ${total}` }),
+            el('button', { class: 'w-btn', text: 'Send everyone home', onclick: () => {
+              d.out = []; save(); critters.replaceChildren(); quiet = 0; due = firstDue();
+            } })),
+          el('p', { class: 'hb-set-note', text: 'The line on the meter is the quiet goal. Quiet for 10–20 seconds brings the first friend out.' }));
+      };
+      syncSet();
+      root.append(stage, el('div', { class: 'w-row hb-ctrl' }, go, el('span', { class: 'hb-presets' }, presetBtns), meter, moreBtn));
+      stage.append(set);
+      return stop;
     },
   },
 
