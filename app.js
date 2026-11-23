@@ -889,7 +889,7 @@ const WIDGETS = {
   },
 
   gbg: {
-    title: 'Class Champions', icon: 'gbg', tone: 'pistachio', w: 760, h: 128, minH: 100, slim: true,
+    title: 'Class Champions', icon: 'gbg', tone: 'pistachio', w: 760, h: 128, minH: 96, slim: true, dockable: true,
     /* starts as a strip along the bottom of the screen, out of the way of the slides */
     pos: () => ({ x: Math.max(100, Math.round((innerWidth - 760) / 2)), y: Math.max(0, innerHeight - 128 - 16) }),
     build(root, d) {
@@ -980,13 +980,13 @@ const WIDGETS = {
           };
           card.addEventListener('click', () => bump(1));
           card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bump(1); } });
+          /* name and score on the top line, members underneath across the whole card */
           card.append(
-            el('span', { class: 'gbg-label' },
-              el('span', { class: 'gbg-name', text: name }),
-              members.length > 0 && el('span', { class: 'gbg-members', text: members.join(', ') })),
+            el('span', { class: 'gbg-name', text: name }),
             el('span', { class: 'gbg-num' }, num, el('small', { text: stars ? ' ★' : ` / ${g.limit}` })),
             el('button', { class: 'gbg-minus', text: '−', disabled: done, 'aria-label': `Take one off ${name}`,
-              onclick: e => { e.stopPropagation(); bump(-1); } }));
+              onclick: e => { e.stopPropagation(); bump(-1); } }),
+            members.length > 0 && el('span', { class: 'gbg-members', text: members.join(', ') }));
           label();
           return card;
         }));
@@ -1782,15 +1782,34 @@ function openWidget(id) {
   ws.open = true;
 
   const inner = el('div', { class: 'w-inner' });
+  /* dockable tools can sit in their own strip along the bottom, with the slides lifted above */
+  const dockBtn = def.dockable ? el('button', { class: 'w-dock', onclick: () => { ws.dock = !ws.dock; applyDock(); place(); save(); } }) : null;
+  if (dockBtn) dockBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 14.5h17"/></svg>';
   const head = el('div', { class: 'w-head' },
     icon(def.icon), el('span', { class: 'title', text: def.title }),
+    dockBtn,
     el('button', { text: '✕', 'aria-label': `Close ${def.title}`, onclick: () => closeWidget(id) }));
   const grip = el('div', { class: 'w-resize' });
   const node = el('section', { class: 'widget', 'aria-label': def.title }, head, el('div', { class: 'w-body' }, inner), grip);
   node.classList.add('tone-' + def.tone);
   if (def.slim) node.classList.add('slim');
 
+  const applyDock = () => {
+    const on = !!(def.dockable && ws.dock);
+    node.classList.toggle('docked', on);
+    document.body.classList.toggle('dock-bottom', on);
+    if (dockBtn) {
+      dockBtn.setAttribute('aria-pressed', String(on));
+      dockBtn.title = on ? 'Float it again' : 'Dock along the bottom (the slides move up to make room)';
+      dockBtn.setAttribute('aria-label', dockBtn.title);
+    }
+  };
   const place = () => {
+    if (def.dockable && ws.dock) {
+      ws.dockH = clamp(ws.dockH || 110, def.minH || 72, Math.round(innerHeight * 0.45));
+      document.documentElement.style.setProperty('--dock-h', ws.dockH + 'px');
+      return;
+    }
     ws.w = clamp(ws.w, 190, innerWidth); ws.h = clamp(ws.h, def.minH || 150, innerHeight);
     ws.x = clamp(ws.x, 0, Math.max(0, innerWidth - 90));
     ws.y = clamp(ws.y, 0, Math.max(0, innerHeight - 44));
@@ -1805,7 +1824,7 @@ function openWidget(id) {
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
     document.body.classList.add('dragging');
-    const start = { px: e.clientX, py: e.clientY, x: ws.x, y: ws.y, w: ws.w, h: ws.h };
+    const start = { px: e.clientX, py: e.clientY, x: ws.x, y: ws.y, w: ws.w, h: ws.h, dh: ws.dockH || 110 };
     const move = ev => { onmove(start, ev.clientX - start.px, ev.clientY - start.py); place(); };
     const end = () => {
       handle.removeEventListener('pointermove', move);
@@ -1818,11 +1837,15 @@ function openWidget(id) {
     handle.addEventListener('pointerup', end);
     handle.addEventListener('pointercancel', end);
   });
-  track(head, (s, dx, dy) => { ws.x = s.x + dx; ws.y = s.y + dy; });
+  /* floating: drag the title bar to move it. Docked: drag it up or down to make the strip taller or shorter */
+  track(head, (s, dx, dy) => {
+    if (def.dockable && ws.dock) ws.dockH = s.dh - dy;
+    else { ws.x = s.x + dx; ws.y = s.y + dy; }
+  });
   track(grip, (s, dx, dy) => { ws.w = s.w + dx; ws.h = s.h + dy; });
 
   live[id] = { node, inner, place, cleanup: null };
-  place(); front();
+  applyDock(); place(); front();
   layer.append(node);
   rebuild(id);
   railButtons[id].setAttribute('aria-pressed', 'true');
@@ -1834,6 +1857,7 @@ function closeWidget(id) {
   if (!w) return;
   w.cleanup?.();
   w.node.remove();
+  if (w.node.classList.contains('docked')) document.body.classList.remove('dock-bottom');
   delete live[id];
   state.widgets[id].open = false;
   railButtons[id].setAttribute('aria-pressed', 'false');
