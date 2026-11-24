@@ -1784,19 +1784,36 @@ const WIDGETS = {
       /* ---- voice and sounds ---- */
       const canTalk = 'speechSynthesis' in window;
       const LETTER = { a: 'ay', e: 'ee', i: 'eye', o: 'oh', u: 'you' };
-      let voice = null;
+      /* The plain built-in voices sound robotic. Edge's "Natural" voices (Natasha and William are
+         Australian) and Chrome's Google voices sound far more human, so they're tried first.
+         Natural voices need the internet; if one fails, that line is said again with a local voice. */
+      let voice = null, englishVoices = [];
+      const voiceScore = v => (/natural|neural/i.test(v.name) ? 100 : /online/i.test(v.name) ? 80 : /google/i.test(v.name) ? 60 : 0)
+        + (/en[-_]AU/i.test(v.lang) ? 30 : /en[-_](GB|NZ|IE)/i.test(v.lang) ? 18 : /en[-_]US/i.test(v.lang) ? 10 : 0)
+        + (/natasha|libby|sonia|maisie|ava|jenny|aria|emma|female/i.test(v.name) ? 6 : 0);
       const pickVoice = () => {
-        const vs = speechSynthesis.getVoices();
-        voice = vs.find(v => /en[-_]AU/i.test(v.lang)) || vs.find(v => /en[-_]GB/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+        englishVoices = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang))
+          .sort((a, b) => voiceScore(b) - voiceScore(a) || a.name.localeCompare(b.name));
+        voice = englishVoices.find(v => v.name === d.voice) || englishVoices[0] || null;
       };
       if (canTalk) { pickVoice(); speechSynthesis.addEventListener('voiceschanged', pickVoice); }
+      const isLocal = v => v.localService !== false;
+      const speakWith = (text, v, retry) => {
+        const u = new SpeechSynthesisUtterance(text);
+        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-AU';
+        const natural = v && /natural|neural|online|google/i.test(v.name);
+        u.rate = natural ? 0.92 : 0.86; u.pitch = natural ? 1 : 1.05;
+        if (retry && v && !isLocal(v)) u.onerror = e => {
+          if (e.error === 'interrupted' || e.error === 'canceled') return;
+          const local = englishVoices.find(isLocal);
+          if (local && local !== v) speakWith(text, local, false);
+        };
+        speechSynthesis.speak(u);
+      };
       const say = (text, { queue = false } = {}) => {
         if (!canTalk || !d.sound) return;
         if (!queue) speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-AU';
-        u.rate = 0.85; u.pitch = 1.1;
-        speechSynthesis.speak(u);
+        speakWith(text, voice, true);
       };
       const tones = notes => {
         if (!d.sound) return;
@@ -1821,7 +1838,28 @@ const WIDGETS = {
 
       /* ---- the picture ---- */
       const pic = el('div', { class: 'ss-pic' });
-      pic.innerHTML = `<svg viewBox="0 0 1000 560" aria-hidden="true">${Z.scene}</svg>`;
+      /* the still picture and the moving front layer are separate, so the grained picture is
+         painted once and never repainted while things animate */
+      pic.innerHTML = `<svg class="ss-back" viewBox="0 0 1000 560" aria-hidden="true">${Z.scene}</svg>` +
+        `<svg class="ss-front" viewBox="0 0 1000 560">${Z.front || ''}</svg>`;
+      const bulbs = [...pic.querySelectorAll('.ss-bulb')].sort((a, b) => a.dataset.i - b.dataset.i);
+      /* tap a character for a little surprise (any time, never counted as a wrong answer) */
+      const TAP_SOUND = {
+        wave: [[660, 0, 0.18], [880, 0.12, 0.25]], hop: [[523, 0, 0.12], [784, 0.1, 0.2]], slide: [[880, 0, 0.1], [660, 0.1, 0.1], [440, 0.2, 0.25]],
+        nod: [[392, 0, 0.2], [523, 0.15, 0.25]], purr: [[196, 0, 0.35, 0.08], [220, 0.2, 0.35, 0.08]], hat: [[659, 0, 0.12], [988, 0.12, 0.25]],
+        puff: [[262, 0, 0.3, 0.08]], flare: [[330, 0, 0.12, 0.08], [494, 0.08, 0.3, 0.1]],
+      };
+      pic.addEventListener('click', e => {
+        const t = e.target.closest('.ss-tap');
+        if (!t || t.classList.contains('go')) return;
+        const kind = t.dataset.tap;
+        tones(TAP_SOUND[kind] || TAP_SOUND.hop);
+        if (reduce()) return;
+        t.classList.add('go');
+        if (kind === 'puff') pic.classList.add('puffing');
+        if (kind === 'flare') pic.classList.add('flaring');
+        later(() => { t.classList.remove('go'); pic.classList.remove('puffing', 'flaring'); }, 1300);
+      });
       const snow = el('div', { class: 'ss-snow', 'aria-hidden': 'true' });
       const words = el('div', { class: 'ss-words', role: 'group', 'aria-label': 'Words in the picture' });
       const sackN = el('div', { class: 'ss-sack-n', 'aria-hidden': 'true', style: `left:${Z.sack.x / 10}%;top:${Z.sack.y / 5.6}%` });
@@ -1848,6 +1886,9 @@ const WIDGETS = {
         pic.style.setProperty('--fill', String(Math.min(1, n / 25)));
         sackN.textContent = String(n);
         sackN.hidden = !S.game || S.game.done;
+        /* every word found switches on more fairy lights; about 22 words lights the whole village */
+        const lit = S.game?.done ? bulbs.length : Math.round(Math.min(1, n / 22) * bulbs.length);
+        bulbs.forEach((b, i) => b.classList.toggle('on', i < lit));
       };
       /* more snow falls as the sack fills */
       const drawSnow = () => {
@@ -2124,7 +2165,9 @@ const WIDGETS = {
           el('div', { class: 'w-row' },
             el('button', { class: 'w-btn', text: 'Read the sack again', onclick: () => { busy = true; fx.replaceChildren(); readback(); } }),
             el('button', { class: 'w-btn go', text: 'New game', onclick: () => { S.game = null; save(); render(); } }),
-            fullBtn));
+            el('button', { class: 'w-btn', text: d.max ? 'Exit full screen' : 'Full screen', onclick: e => {
+              setMax(!d.max); e.target.textContent = d.max ? 'Exit full screen' : 'Full screen';
+            } })));
       };
 
       /* ---- start card and settings ---- */
@@ -2175,6 +2218,16 @@ const WIDGETS = {
             el('button', { class: 'w-btn', text: d.sound ? 'Turn off' : 'Turn on', onclick: () => {
               d.sound = !d.sound; if (!d.sound && canTalk) speechSynthesis.cancel(); save(); setPanel.hidden = true;
             } })),
+          canTalk && englishVoices.length ? el('div', { class: 'mj-set-row' }, el('span', { text: 'Voice' }),
+            el('span', { class: 'mj-set-opts' },
+              el('select', { class: 'w-select ss-voice', 'aria-label': 'Voice', onchange: e => {
+                d.voice = e.target.value; save(); pickVoice(); say('Hello! Can you find… cake?');
+              } }, englishVoices.map(v => el('option', { value: v.name, selected: v === voice,
+                text: v.name.replace(/^Microsoft |^Google /, '').replace(/ - English.*| \(.*?\)$/g, m => /natural/i.test(m) ? ' (natural)' : '') +
+                  (/en[-_]AU/i.test(v.lang) ? ' · Aus' : /en[-_]GB/i.test(v.lang) ? ' · UK' : /en[-_]US/i.test(v.lang) ? ' · US' : '') }))),
+              el('button', { class: 'w-btn', text: 'Try it', onclick: () => say('Hello! Can you find… cake?') }))) : null,
+          canTalk && voice && !/natural|neural|online|google/i.test(voice.name) ? el('p', { class: 'mj-set-note',
+            text: 'Tip: this browser only has robotic voices. Open the board in Microsoft Edge for natural-sounding voices like Natasha (Australian).' }) : null,
           el('div', { class: 'mj-set-row' }, el('span', { text: `Spinner: ${left} of ${here.length} names left` }),
             el('button', { class: 'w-btn', text: 'Start the names again', onclick: () => { S.pool = []; save(); setPanel.hidden = true; } })),
           !d.test && state.classes.length > 1 ? el('div', { class: 'mj-set-row' }, el('span', { text: 'Class' }), classSwitch()) : null,
