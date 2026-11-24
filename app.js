@@ -1802,7 +1802,7 @@ const WIDGETS = {
         const u = new SpeechSynthesisUtterance(text);
         if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-AU';
         const natural = v && /natural|neural|online|google/i.test(v.name);
-        u.rate = natural ? 0.92 : 0.86; u.pitch = natural ? 1 : 1.05;
+        u.rate = natural ? 1.42 : 1.36; u.pitch = natural ? 1 : 1.05;
         if (retry && v && !isLocal(v)) u.onerror = e => {
           if (e.error === 'interrupted' || e.error === 'canceled') return;
           const local = englishVoices.find(isLocal);
