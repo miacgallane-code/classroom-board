@@ -38,6 +38,7 @@ const ICONS = {
   note: '<path d="M5 4.5h14v9.5l-5 5H5z"/><path d="M19 14h-5v5"/>',
   hush: '<path d="M4.5 19.5c0-8.3 6.2-14.5 15-15 0 8.8-6.2 15-15 15z"/><path d="M4.5 19.5l8-8"/>',
   jewels: '<path d="M7.5 4h9l4.5 5.5L12 20.5 3 9.5z"/><path d="M3 9.5h18M9.5 4 8 9.5l4 11 4-11L14.5 4"/>',
+  sleigh: '<path d="M4 6.5h4l2.5 6H20"/><path d="M4 6.5v5a4 4 0 0 0 4 4h9.5a2.5 2.5 0 0 0 2.5-2.5v-3"/><path d="M3 19.5h15a3 3 0 0 0 3-3M8 15.5v4M16 15.5v4"/>',
   install: '<rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M12 7v6M9 10.5l3 3 3-3M8 20h8"/>',
   gbg: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v3.5M8.5 20h7M10 16.5h4l.5 3.5h-5z"/>',
   list: '<path d="M9 7h10M9 12h10M9 17h10"/><path d="M5 7h.01M5 12h.01M5 17h.01" stroke-width="2.6"/>',
@@ -1740,6 +1741,495 @@ const WIDGETS = {
         if (S.game && !S.game.done && !overlay && !spinning && document.visibilityState === 'visible') anim('quirk', 2400);
       }, 11000);
       return () => { timers.forEach(clearTimeout); timers.clear(); clearInterval(idle); closeTurn(); };
+    },
+  },
+
+  /* Santa's Sleigh: a word-hunt warm-up. The spinner calls a child up to find a word in the
+     snowy picture; each word found goes into Santa's sack, then the sleigh takes off and the
+     class reads the sack together. The picture and word spots come from sleigh-data.js. */
+  sleigh: {
+    title: 'Santa’s Sleigh', icon: 'sleigh', tone: 'rose', w: 1000, h: 660, minH: 400,
+    pos: () => {
+      const w = Math.min(1000, innerWidth - 120), h = Math.min(660, innerHeight - 32);
+      return { w, h, x: Math.max(100, Math.round((innerWidth - w) / 2)), y: Math.max(16, Math.round((innerHeight - h) / 2)) };
+    },
+    build(root, d) {
+      const Z = window.SLEIGH;
+      if (!Z) { root.append(el('p', { class: 'note', text: 'Santa’s Sleigh couldn’t load. Reload the page to try again.' })); return; }
+      root.classList.add('mj-root', 'ss-root');
+      const node = root.closest('.widget');
+      node?.classList.toggle('mj-max', !!d.max);
+      const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const cleanWords = list => [...new Set((list || []).map(w => String(w).toLowerCase().trim())
+        .filter(w => /^[a-z]{1,12}$/.test(w)))].slice(0, 80);
+      d.words = cleanWords(d.words);
+      if (!d.words.length) d.words = Z.words.slice();
+      d.sound ??= true; d.listen ??= false; d.byClass ||= {};
+      const cls = activeClass();
+      const S = d.byClass[d.test ? 'test' : cls.id] ||= {};
+      S.pool ||= []; S.history ||= []; S.carry ||= [];
+      const roster = () => d.test ? Z.testNames.slice() : present(cls);
+      const spotOf = id => Z.spots.find(s => s.id === id);
+      const homeOf = w => Z.spots.find(s => s.home === w)?.id;
+
+      let dead = false, busy = false, spinning = false, autoOn = false, hintT = null;
+      const timers = new Set();
+      const later = (fn, ms) => {
+        if (dead) return null;
+        const t = setTimeout(() => { timers.delete(t); if (!dead) fn(); }, ms);
+        timers.add(t); return t;
+      };
+      const stop = t => { if (t) { clearTimeout(t); timers.delete(t); } };
+
+      /* ---- voice and sounds ---- */
+      const canTalk = 'speechSynthesis' in window;
+      const LETTER = { a: 'ay', e: 'ee', i: 'eye', o: 'oh', u: 'you' };
+      let voice = null;
+      const pickVoice = () => {
+        const vs = speechSynthesis.getVoices();
+        voice = vs.find(v => /en[-_]AU/i.test(v.lang)) || vs.find(v => /en[-_]GB/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+      };
+      if (canTalk) { pickVoice(); speechSynthesis.addEventListener('voiceschanged', pickVoice); }
+      const say = (text, { queue = false } = {}) => {
+        if (!canTalk || !d.sound) return;
+        if (!queue) speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-AU';
+        u.rate = 0.85; u.pitch = 1.1;
+        speechSynthesis.speak(u);
+      };
+      const tones = notes => {
+        if (!d.sound) return;
+        try {
+          const ac = new (window.AudioContext || window.webkitAudioContext)();
+          notes.forEach(([f, t, len = 0.35, vol = 0.16]) => {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = 'triangle'; o.frequency.value = f; o.connect(g); g.connect(ac.destination);
+            const at = ac.currentTime + t;
+            g.gain.setValueAtTime(0.0001, at);
+            g.gain.exponentialRampToValueAtTime(vol, at + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+            o.start(at); o.stop(at + len + 0.05);
+          });
+          setTimeout(() => ac.close(), 3000);
+        } catch {}
+      };
+      const jingle = () => tones([[1047, 0], [1319, 0.12], [1568, 0.24, 0.5]]);
+      const goldJingle = () => tones([[1047, 0], [1319, 0.1], [1568, 0.2], [2093, 0.32, 0.8]]);
+      const boop = () => tones([[330, 0, 0.22, 0.1], [262, 0.14, 0.3, 0.1]]);
+      const fanfare = () => tones([[784, 0], [988, 0.16], [1175, 0.32], [1568, 0.5, 0.9]]);
+
+      /* ---- the picture ---- */
+      const pic = el('div', { class: 'ss-pic' });
+      pic.innerHTML = `<svg viewBox="0 0 1000 560" aria-hidden="true">${Z.scene}</svg>`;
+      const snow = el('div', { class: 'ss-snow', 'aria-hidden': 'true' });
+      const words = el('div', { class: 'ss-words', role: 'group', 'aria-label': 'Words in the picture' });
+      const sackN = el('div', { class: 'ss-sack-n', 'aria-hidden': 'true', style: `left:${Z.sack.x / 10}%;top:${Z.sack.y / 5.6}%` });
+      const fx = el('div', { class: 'ss-fx' });
+      const stage = el('div', { class: 'ss-stage' }, pic, snow, words, sackN, fx);
+      const host = el('div', { class: 'mj-host' }, stage);
+
+      const wordBtn = (id, w, isNew) => {
+        const s = spotOf(id);
+        const b = el('button', {
+          class: `ss-word k-${s.kind} c${s.c || 0}` + (w === S.game.golden ? ' gold' : '') + (isNew ? ' new' : ''),
+          style: `left:${s.x / 10}%;top:${s.y / 5.6}%`, 'data-spot': id, text: w,
+          onclick: () => tapWord(id, b),
+        });
+        return b;
+      };
+      const btnAt = id => words.querySelector(`[data-spot="${id}"]`);
+      const drawWords = () => {
+        const g = S.game;
+        words.replaceChildren(...(g && !g.done ? Object.entries(g.board).filter(([id]) => spotOf(id)).map(([id, w]) => wordBtn(id, w)) : []));
+      };
+      const syncSack = () => {
+        const n = S.game?.found.length || 0;
+        pic.style.setProperty('--fill', String(Math.min(1, n / 25)));
+        sackN.textContent = String(n);
+        sackN.hidden = !S.game || S.game.done;
+      };
+      /* more snow falls as the sack fills */
+      const drawSnow = () => {
+        const want = reduce() ? 0 : clamp(8 + (S.game?.found.length || 0) * 2, 8, 64);
+        while (snow.children.length < want) {
+          const sz = (0.35 + Math.random() * 0.6).toFixed(2);
+          snow.append(el('i', { style: `left:${(Math.random() * 100).toFixed(1)}%;width:${sz}cqw;height:${sz}cqw;` +
+            `--d:${(7 + Math.random() * 7).toFixed(1)}s;--dl:-${(Math.random() * 14).toFixed(1)}s;--x:${(Math.random() * 6 - 3).toFixed(1)}cqw` }));
+        }
+        while (snow.children.length > want) snow.lastChild.remove();
+      };
+      const bump = () => {
+        if (reduce()) return;
+        pic.classList.remove('bump'); void pic.offsetWidth; pic.classList.add('bump');
+        later(() => pic.classList.remove('bump'), 700);
+      };
+      const toast = (text, kind = '') => {
+        fx.querySelectorAll('.ss-toast').forEach(t => t.remove());
+        const t = el('div', { class: 'ss-toast ' + kind, role: 'status', text });
+        fx.append(t); later(() => t.remove(), 2400);
+      };
+
+      /* ---- bar under the picture ---- */
+      const nameBox = el('div', { class: 'mj-name-box ss-name', role: 'status', 'aria-live': 'polite' });
+      const findWord = el('span', { class: 'ss-find-word' });
+      const sayBtn = el('button', { class: 'ss-say', title: 'Say it again', 'aria-label': 'Say the word again', onclick: () => askAloud() });
+      sayBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>';
+      const findBox = el('div', { class: 'ss-find' }, el('span', { class: 'ss-find-label', text: 'Find' }), findWord, sayBtn);
+      const spinBtn = el('button', { class: 'w-btn go', text: 'Next elf', onclick: () => spin() });
+      const hintBtn = el('button', { class: 'w-btn', text: 'Hint', title: 'Rudolph lights up the word', onclick: () => showHint() });
+      const skipBtn = el('button', { class: 'w-btn', text: 'Skip', title: 'End this turn without the word', onclick: () => skipTurn() });
+      const info = el('span', { class: 'mj-info' });
+      const fullBtn = el('button', { class: 'w-btn', onclick: () => setMax(!d.max) });
+      const flyBtn = el('button', { class: 'w-btn ss-takeoff', text: 'Takeoff!', title: 'Finish: the sleigh flies off and the class reads the sack', onclick: () => takeoff() });
+      const setPanel = el('div', { class: 'mj-set', hidden: true });
+      const bar = el('div', { class: 'mj-bar' }, nameBox, findBox, spinBtn, hintBtn, skipBtn, info, el('span', { class: 'mj-grow' }),
+        el('button', { class: 'w-btn round', text: '⋯', title: 'Settings', 'aria-label': 'Game settings', onclick: () => toggleSet() }),
+        fullBtn, flyBtn);
+      const syncBar = () => {
+        const g = S.game, live = !!g && !g.done, t = live ? g.turn : null;
+        const left = live ? Object.keys(g.board).length : 0;
+        spinBtn.disabled = !live || !!t || spinning || busy || !left || !roster().length;
+        spinBtn.classList.toggle('ss-ready', !spinBtn.disabled);
+        hintBtn.hidden = skipBtn.hidden = findBox.hidden = !t;
+        findWord.textContent = t ? (d.listen ? '👂' : t.word) : '';
+        flyBtn.disabled = !live || !g.found.length || busy;
+        fullBtn.textContent = d.max ? 'Exit full screen' : 'Full screen';
+        info.textContent = live ? `${g.found.length} in the sack` : '';
+        if (!spinning) {
+          nameBox.textContent = t ? t.name : 'Tap Next elf';
+          nameBox.classList.toggle('blank', !t);
+        }
+      };
+      const setMax = on => {
+        d.max = on; node?.classList.toggle('mj-max', on); save(); syncBar();
+        if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+        else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      };
+
+      /* ---- a game ---- */
+      const startGame = () => {
+        if (!roster().length) return;
+        const list = d.words.slice();
+        const carry = S.carry.filter(w => list.includes(w));
+        let order = [...shuffle(carry), ...shuffle(list.filter(w => !carry.includes(w)))];
+        const board = {};
+        Z.spots.forEach(s => { if (s.home && order.includes(s.home)) board[s.id] = s.home; });
+        order = order.filter(w => !Object.values(board).includes(w));
+        shuffle(Z.spots.filter(s => !board[s.id])).forEach(s => { if (order.length) board[s.id] = order.shift(); });
+        S.game = { board, queue: order, found: [], golden: rand(Object.values(board)), turn: null, turns: 0, started: today(), done: false };
+        save(); render();
+        say('Oh no! Santa’s sleigh is stuck in the snow. Let’s find the magic words!');
+      };
+      const takeName = () => {
+        const here = roster();
+        S.pool = S.pool.filter(n => here.includes(n));
+        if (!S.pool.length) S.pool = here.slice();
+        const name = rand(S.pool);
+        S.pool = S.pool.filter(n => n !== name);
+        return name;
+      };
+      const askAloud = () => { const t = S.game?.turn; if (t) say(`${t.name}, can you find… ${t.word}?`); };
+      const spin = () => {
+        const g = S.game;
+        if (!g || g.done || g.turn || spinning || busy) return;
+        const here = roster(), onBoard = Object.values(g.board);
+        if (!here.length || !onBoard.length) return;
+        const winner = takeName();
+        save();
+        spinning = true; setPanel.hidden = true; syncBar();
+        nameBox.classList.remove('blank', 'pop');
+        const land = () => {
+          spinning = false;
+          const choices = onBoard.length > 1 ? onBoard.filter(w => w !== g.lastWord) : onBoard;
+          g.turn = { name: winner, word: rand(choices), misses: 0 };
+          g.lastWord = g.turn.word; g.turns++;
+          save(); syncBar();
+          if (!reduce()) { void nameBox.offsetWidth; nameBox.classList.add('pop'); }
+          askAloud();
+          stop(hintT); hintT = later(showHint, 30000);   // Rudolph helps if it's taking a while
+          autoNext();
+        };
+        if (reduce() || here.length < 2) { land(); return; }
+        let i = 0, wait = 45;
+        const step = () => {
+          if (++i > 18) { land(); return; }
+          let n;
+          do n = rand(here); while (n === nameBox.textContent);
+          nameBox.textContent = n; wait *= 1.13; later(step, wait);
+        };
+        step();
+      };
+      const showHint = () => {
+        const g = S.game, t = g?.turn;
+        if (!t || busy) return;
+        const id = Object.keys(g.board).find(k => g.board[k] === t.word);
+        words.querySelectorAll('.hint').forEach(b => b.classList.remove('hint'));
+        btnAt(id)?.classList.add('hint');
+        pic.classList.add('nose');
+      };
+      const clearHint = () => {
+        stop(hintT); hintT = null;
+        words.querySelectorAll('.hint').forEach(b => b.classList.remove('hint'));
+        pic.classList.remove('nose');
+      };
+      const skipTurn = () => {
+        if (!S.game?.turn || busy) return;
+        clearHint(); S.game.turn = null; save(); syncBar();
+        if (canTalk) speechSynthesis.cancel();
+      };
+
+      /* a found word goes back to the spot it belongs in when it can (cake in the gingerbread house) */
+      const refill = id => {
+        const q = S.game.queue;
+        if (!q.length) return null;
+        let i = q.findIndex(w => homeOf(w) === id);
+        if (i < 0) i = 0;
+        const w = q.splice(i, 1)[0];
+        S.game.board[id] = w;
+        return w;
+      };
+      const tapWord = (id, b) => {
+        const g = S.game;
+        if (!g || g.done || busy || b.classList.contains('got')) return;
+        if (!g.turn) { if (!spinning) toast('Tap “Next elf” first', 'soft'); return; }
+        const w = g.board[id];
+        if (w === g.turn.word) right(id, b); else wrong(b, w);
+      };
+      const wrong = (b, w) => {
+        const t = S.game.turn;
+        t.misses++; save();
+        b.classList.remove('wrong'); void b.offsetWidth; b.classList.add('wrong');
+        boop();
+        say(`That says ${w}. Try again!`);
+        toast(`That says “${w}”. Try again!`, 'soft');
+        if (t.misses >= 2) showHint();
+        autoNext();
+      };
+      const right = (id, b) => {
+        const g = S.game, t = g.turn, w = t.word, gold = w === g.golden;
+        busy = true; clearHint();
+        g.found.push(w); delete g.board[id]; g.turn = null;
+        const nw = refill(id);
+        save(); syncBar();
+        b.classList.add('got');
+        gold ? goldJingle() : jingle();
+        magic(w, t.name, gold, () => fly(b, w, () => {
+          b.remove();
+          syncSack(); drawSnow(); bump();
+          if (nw) later(() => { if (S.game?.board[id] === nw && !btnAt(id)) words.append(wordBtn(id, nw, true)); }, 500);
+          busy = false; syncBar();
+          if (!Object.keys(g.board).length) {
+            toast('Every word is in the sack!', 'big');
+            say('Every word is in the sack! Time for takeoff!', { queue: true });
+            later(takeoff, 2600);
+          } else autoNext();
+        }));
+      };
+
+      /* the word big in the middle: the magic e jumps over and the vowel says its name */
+      const magic = (w, name, gold, next) => {
+        const vi = /[aeiou][^aeiou]e$/.test(w) ? w.length - 3 : -1;
+        const V = vi >= 0 ? w[vi] : '';
+        const letters = [...w].map((ch, i) => el('span', { class: 'ss-l' + (i === vi ? ' v' : '') + (vi >= 0 && i === w.length - 1 ? ' e' : ''), text: ch }));
+        const arc = el('div', { class: 'ss-arc' });
+        const big = el('div', { class: 'ss-big' }, arc, letters);
+        const card = el('div', { class: 'ss-magic' + (gold ? ' gold' : ''), role: 'status' },
+          gold ? el('p', { class: 'ss-gold-flag', text: '★ Golden bauble! ★' }) : null,
+          big,
+          vi >= 0 ? el('p', { class: 'ss-magic-sub' }, 'Magic ', el('b', { text: 'e' }), ' makes ', el('b', { class: 'v', text: V }), ' say its name!') : null,
+          el('p', { class: 'ss-magic-name', text: `Well done, ${name}!` }));
+        fx.querySelectorAll('.ss-toast').forEach(t => t.remove());
+        fx.append(card);
+        /* offsets ignore the card's zoom-in, so the arc lands on the letters whatever the timing */
+        const drawArc = () => {
+          const W = big.offsetWidth, H = big.offsetHeight, a = letters[vi], e = letters[w.length - 1];
+          if (!W) return;
+          const ax = a.offsetLeft + a.offsetWidth / 2, ex = e.offsetLeft + e.offsetWidth / 2;
+          const top = a.offsetTop + a.offsetHeight * 0.18, h = Math.max(H * 0.3, (ex - ax) * 0.4);
+          arc.innerHTML = `<svg viewBox="0 0 ${W} ${H}"><path pathLength="1" d="M${ex.toFixed(1)},${top.toFixed(1)} Q${((ax + ex) / 2).toFixed(1)},${(top - h).toFixed(1)} ${ax.toFixed(1)},${top.toFixed(1)}"/></svg>`;
+        };
+        if (vi >= 0) drawArc();
+        say(`${w}!`);
+        if (vi >= 0) say(`The magic E makes ${LETTER[V]} say its name.`, { queue: true });
+        say(gold ? `Golden bauble! Well done, ${name}!` : `Well done, ${name}!`, { queue: true });
+        later(() => { if (vi >= 0) drawArc(); card.classList.add('zap'); }, reduce() ? 0 : 650);
+        later(() => {
+          card.classList.add('out');
+          later(() => { card.remove(); next(); }, 300);
+        }, gold ? 4400 : 3600);
+      };
+      /* the word flies up into Santa's sack */
+      const fly = (b, w, done) => {
+        const sr = stage.getBoundingClientRect(), br = b.getBoundingClientRect();
+        b.classList.add('gone');
+        if (reduce() || !sr.width || !b.isConnected) { done(); return; }
+        const x0 = br.left - sr.left + br.width / 2, y0 = br.top - sr.top + br.height / 2;
+        const dx = sr.width * Z.sack.x / 1000 - x0, dy = sr.height * Z.sack.y / 560 - y0;
+        const copy = el('span', { class: b.className.replace(/\b(got|gone|wrong|hint|new)\b/g, ''), text: w });
+        const f = el('div', { class: 'ss-flyer', style: `left:${x0}px;top:${y0}px` }, copy);
+        fx.append(f);
+        let landed = false;
+        const land = () => { if (landed) return; landed = true; f.remove(); if (!dead) done(); };
+        later(land, 1600);   // in case the animation never finishes (a hidden tab)
+        f.animate([
+          { transform: 'translate(0, 0) scale(1.15)' },
+          { transform: `translate(${dx * 0.45}px, ${dy * 0.45 - sr.height * 0.12}px) scale(.9)`, offset: 0.45 },
+          { transform: `translate(${dx}px, ${dy}px) scale(.15)`, opacity: 0.4 },
+        ], { duration: 1100, easing: 'ease-in-out' }).onfinish = land;
+      };
+
+      /* ---- takeoff and reading the sack ---- */
+      const takeoff = () => {
+        const g = S.game;
+        if (!g || g.done || !g.found.length) return;
+        if (busy && Object.keys(g.board).length) return;
+        busy = true; clearHint(); setPanel.hidden = true;
+        g.turn = null; g.done = true;
+        S.carry = [...Object.values(g.board), ...g.queue];   // not found yet: first in the next game
+        S.history.unshift({ date: today(), found: g.found.length, turns: g.turns });
+        S.history.length = Math.min(S.history.length, 40);
+        save(); syncBar();
+        fanfare(); say('Ho ho ho! Up, up and away!');
+        stage.classList.add('leaving'); pic.classList.add('takeoff'); sackN.hidden = true;
+        later(readback, reduce() ? 400 : 3300);
+      };
+      const readback = () => {
+        const list = S.game.found;
+        let i = 0, t = null;
+        const big = el('div', { class: 'ss-read-word' });
+        const n = el('p', { class: 'ss-read-n' });
+        const end = () => { stop(t); card.remove(); busy = false; render(); };
+        const card = el('div', { class: 'ss-read', title: 'Tap for the next word' },
+          el('p', { class: 'ss-read-head', text: 'Read Santa’s sack together!' }), big, n,
+          el('div', { class: 'w-row' }, el('button', { class: 'w-btn', text: 'Skip to the end', onclick: end })));
+        const show = () => {
+          if (i >= list.length) { end(); return; }
+          big.textContent = list[i];
+          n.textContent = `${i + 1} of ${list.length}`;
+          big.classList.remove('pop'); void big.offsetWidth; big.classList.add('pop');
+          i++; t = later(show, 2400);
+        };
+        card.addEventListener('click', e => { if (e.target.closest('button')) return; stop(t); show(); });
+        pic.classList.add('flown');
+        fx.append(card); show();
+      };
+      const results = () => {
+        const g = S.game, n = g.found.length, left = S.carry.length;
+        return el('div', { class: 'mj-results ss-results', role: 'status' },
+          el('div', { class: 'mj-res-text' },
+            el('h3', { text: `The sleigh flew off with ${n} magic ${n === 1 ? 'word' : 'words'}!` }),
+            el('p', { class: 'mj-met', text: g.found.join(', ') }),
+            el('p', { text: left ? `${left} ${left === 1 ? 'word is' : 'words are'} still in the snow. They come first next game.` : 'Every word was found!' })),
+          el('div', { class: 'w-row' },
+            el('button', { class: 'w-btn', text: 'Read the sack again', onclick: () => { busy = true; fx.replaceChildren(); readback(); } }),
+            el('button', { class: 'w-btn go', text: 'New game', onclick: () => { S.game = null; save(); render(); } }),
+            fullBtn));
+      };
+
+      /* ---- start card and settings ---- */
+      const setTest = on => { d.test = on; autoOn = false; save(); rebuild('sleigh'); };
+      const startCard = () => {
+        const here = roster();
+        const modeBtn = (on, text) => el('button', {
+          class: 'w-btn' + (d.listen === on ? ' on' : ''), 'aria-pressed': String(d.listen === on), text,
+          onclick: () => { d.listen = on; save(); render(); },
+        });
+        return el('div', { class: 'ss-start' },
+          el('h3', { class: 'ss-title', text: 'Fill Santa’s Sleigh' }),
+          el('p', { class: 'ss-lead', text: 'Santa’s sleigh is stuck in the snow! Find the magic words to fill his sack so it can fly.' }),
+          el('div', { class: 'w-row' }, modeBtn(false, 'See and hear the word'), modeBtn(true, 'Hear it only')),
+          here.length ? null : el('p', { class: 'ss-small', text: 'There are no names in this class yet. Add a class list, or try test mode.' }),
+          el('div', { class: 'w-row' },
+            el('button', { class: 'w-btn go', text: 'Start', disabled: !here.length, onclick: startGame }),
+            here.length ? null : el('button', { class: 'w-btn', text: 'Add class list', onclick: openClassDialog }),
+            el('button', { class: 'w-btn', text: 'Change words', onclick: () => toggleSet() }),
+            el('button', { class: 'w-btn', text: d.test ? 'Leave test mode' : 'Test mode', onclick: () => setTest(!d.test) })),
+          el('p', { class: 'ss-small', text: `${d.words.length} words · ` + (d.test
+            ? 'Test mode uses made-up names.'
+            : `For ${cls.name || 'this class'}. Names and games stay on this device.`) }));
+      };
+      const toggleSet = () => {
+        if (!setPanel.hidden) { setPanel.hidden = true; return; }
+        const here = roster();
+        const left = S.pool.filter(n => here.includes(n)).length || here.length;
+        const ta = el('textarea', { class: 'ss-words-edit', rows: '3', 'aria-label': 'Words for the game', spellcheck: 'false' });
+        ta.value = d.words.join(', ');
+        const note = el('p', { class: 'mj-set-note', text: 'Separate words with commas or spaces. Changes start with the next game.' });
+        const opt = (label, on, fn) => el('button', { class: 'w-btn' + (on ? ' on' : ''), text: label, onclick: fn });
+        setPanel.replaceChildren(...[
+          el('div', { class: 'mj-set-row' }, el('span', { text: `Words (${d.words.length})` }),
+            el('span', { class: 'mj-set-opts' },
+              el('button', { class: 'w-btn', text: 'Magic e list', title: 'Put back the a_e words', onclick: () => { ta.value = Z.words.join(', '); } }),
+              el('button', { class: 'w-btn on', text: 'Save words', onclick: () => {
+                const list = cleanWords(ta.value.split(/[\s,;]+/));
+                if (!list.length) { note.textContent = 'Add at least one word.'; return; }
+                d.words = list; save(); setPanel.hidden = true;
+                if (!S.game) render();
+              } }))),
+          ta, note,
+          el('div', { class: 'mj-set-row' }, el('span', { text: 'The word' }), el('span', { class: 'mj-set-opts' },
+            opt('See and hear', !d.listen, () => { d.listen = false; save(); setPanel.hidden = true; syncBar(); }),
+            opt('Hear only', d.listen, () => { d.listen = true; save(); setPanel.hidden = true; syncBar(); }))),
+          el('div', { class: 'mj-set-row' }, el('span', { text: canTalk ? 'Voice and sounds' : 'Sounds (this browser can’t read aloud)' }),
+            el('button', { class: 'w-btn', text: d.sound ? 'Turn off' : 'Turn on', onclick: () => {
+              d.sound = !d.sound; if (!d.sound && canTalk) speechSynthesis.cancel(); save(); setPanel.hidden = true;
+            } })),
+          el('div', { class: 'mj-set-row' }, el('span', { text: `Spinner: ${left} of ${here.length} names left` }),
+            el('button', { class: 'w-btn', text: 'Start the names again', onclick: () => { S.pool = []; save(); setPanel.hidden = true; } })),
+          !d.test && state.classes.length > 1 ? el('div', { class: 'mj-set-row' }, el('span', { text: 'Class' }), classSwitch()) : null,
+          el('div', { class: 'mj-set-row' }, el('span', { text: 'Test mode (made-up names)' }),
+            el('button', { class: 'w-btn', text: d.test ? 'Turn off' : 'Turn on', onclick: () => setTest(!d.test) })),
+          d.test ? el('div', { class: 'mj-set-row' }, el('span', { text: 'Play turns by itself' }),
+            el('button', { class: 'w-btn', text: autoOn ? 'Stop' : 'Play it for me', onclick: () => {
+              autoOn = !autoOn; setPanel.hidden = true; if (autoOn) autoNext();
+            } })) : null,
+          el('p', { class: 'mj-set-note', text: 'Games save as you go. Words nobody found come first in the next game.' }),
+        ].filter(Boolean));
+        setPanel.hidden = false;
+      };
+
+      /* test mode: plays turns by itself (mostly right, sometimes a wrong tap) */
+      const autoNext = () => {
+        if (!autoOn || !d.test) return;
+        later(() => {
+          if (!autoOn) return;
+          const g = S.game;
+          if (!g) { startGame(); autoNext(); return; }
+          if (g.done) { autoOn = false; return; }
+          if (busy || spinning) return;
+          if (!g.turn) { spin(); return; }
+          const ids = Object.keys(g.board);
+          const id = ids.find(k => g.board[k] === g.turn.word);
+          const pick = Math.random() < 0.75 ? id : rand(ids);
+          const b = btnAt(pick);
+          if (b) tapWord(pick, b); else autoNext();
+        }, 1400);
+      };
+
+      const render = () => {
+        setPanel.hidden = true; clearHint();
+        fx.replaceChildren();
+        const g = S.game;
+        stage.classList.remove('leaving');
+        pic.classList.remove('takeoff', 'bump');
+        pic.classList.toggle('flown', !!g?.done);
+        drawWords(); syncSack(); drawSnow();
+        root.replaceChildren(...[
+          d.test ? el('p', { class: 'mj-test-flag', text: 'Test mode: made-up names' }) : null,
+          host,
+          g ? (g.done ? results() : bar) : null,
+          setPanel,
+        ].filter(Boolean));
+        if (!g) fx.append(startCard());
+        syncBar();
+      };
+      render();
+      return () => {
+        dead = true; autoOn = false;
+        timers.forEach(clearTimeout); timers.clear();
+        if (canTalk) { speechSynthesis.cancel(); speechSynthesis.removeEventListener('voiceschanged', pickVoice); }
+      };
     },
   },
 
