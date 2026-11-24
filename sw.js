@@ -2,13 +2,14 @@
    After the first visit everything the board needs is kept on this device, so it opens
    with no internet, and even if a network filter later blocks the site.
    Bump VERSION whenever the app files change so devices pick up the update. */
-const VERSION = 'v29';
+const VERSION = 'v31';
 const CACHE = `classroom-board-${VERSION}`;
 importScripts('./mixup-voice.js');   // the list of Mr MixUp's recorded lines (self.MIXUP_VOICE)
 const CORE = [
-  './', './index.html', './styles.css', './app.js', './manifest.webmanifest', './classes.locked.js', './hush-data.js', './hush-xmas.js', './jewels-data.js', './sleigh-data.js',
+  './', './index.html', './styles.css', './app.js', './manifest.webmanifest', './classes.locked.js', './hush-data.js', './hush-xmas.js', './jewels-data.js', './sleigh-data.js', './whiteboard-steps.js',
   './mixup-data.js', './mixup-logic.js', './mixup-voice.js',
   ...(self.MIXUP_VOICE || []).map(id => `./mixup-audio/${id}.mp3`),
+  ...['line-seed', 'line-bee', 'line-sun', 'line-rain', 'step-seed', 'step-bee', 'step-sun', 'step-rain', 'praise-1', 'praise-2', 'praise-3', 'praise-4', 'praise-5', 'praise-6'].map(c => `./audio/pip/${c}.mp3`),
   './icon.svg', './icon-192.png', './icon-512.png',
   './fonts/EduNSWACTFoundation-VariableFont_wght.ttf',
 ];

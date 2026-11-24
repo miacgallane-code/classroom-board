@@ -42,6 +42,8 @@ const ICONS = {
   sleigh: '<path d="M4 6.5h4l2.5 6H20"/><path d="M4 6.5v5a4 4 0 0 0 4 4h9.5a2.5 2.5 0 0 0 2.5-2.5v-3"/><path d="M3 19.5h15a3 3 0 0 0 3-3M8 15.5v4M16 15.5v4"/>',
   install: '<rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M12 7v6M9 10.5l3 3 3-3M8 20h8"/>',
   gbg: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v3.5M8.5 20h7M10 16.5h4l.5 3.5h-5z"/>',
+  pip: '<ellipse cx="10.5" cy="14" rx="7" ry="4.5"/><path d="M16.5 12.2c2-1.2 4.8-.7 4.8.9s-2.6 2.2-4.8 1.6M3.8 14.5c-1.8.3-2 2.3-.6 3.2"/><path d="M14.6 11.4h.01" stroke-width="2.4"/>',
+  whiteboard: '<rect x="3.5" y="4.5" width="17" height="12" rx="2.5"/><path d="M7 10.5c1.5-2 3 2 4.5 0s3 2 4.5 0M9 20.5l3-4 3 4"/>',
   list: '<path d="M9 7h10M9 12h10M9 17h10"/><path d="M5 7h.01M5 12h.01M5 17h.01" stroke-width="2.6"/>',
   full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   hide: '<path d="M11 7l-5 5 5 5M18 7l-5 5 5 5"/>',
@@ -454,7 +456,7 @@ $('#btn-class').addEventListener('click', openClassDialog);
 /* ---------- switching class (a new class every lesson) ---------- */
 function refreshClass() {
   $('#rail-class-name').textContent = activeClass().name || 'Untitled class';
-  ['picker', 'groups', 'counter', 'gbg', 'jewels', 'mixup'].forEach(rebuild);
+  ['picker', 'groups', 'counter', 'whiteboard', 'gbg', 'jewels'].forEach(rebuild);
 }
 function switchClass(id) {
   state.activeClass = id;
@@ -688,7 +690,92 @@ $('#gbg-reset').addEventListener('click', () => {
 });
 
 /* ---------- the widgets ---------- */
-const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+/* whiteboard expectations card: a framed picture per step, with Pip the platypus in each one
+   (static markup, drawn on a 100 x 100 grid) */
+const WB_TONES = ['mauve', 'stone', 'pistachio', 'blue'];
+const WBC = { navy: '#2f3a5c', blue: '#3f6fb3', board: '#fff', green: '#7f9e5c', soil: '#8a6a4f', yellow: '#e9cf6b', peach: '#efc6a4', cloud: '#a3acb7', orange: '#cf7048' };
+const wbBoard = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5" fill="${WBC.board}" stroke="${WBC.navy}" stroke-width="2.5"/>`;
+/* Pip's head, bill to the right; mood: sleep | busy | proud | happy */
+const wbPip = (x, y, mood) => {
+  const eye = mood === 'sleep' ? `<path d="M.5 -2.5q2.2 1.8 4.4 0" stroke="${WBC.navy}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`
+    : mood === 'happy' ? `<path d="M.5 -1.5q2.2 -2.6 4.4 0" stroke="${WBC.navy}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`
+    : `<circle cx="2.8" cy="-2.2" r="2" fill="${WBC.navy}"/><circle cx="3.5" cy="-2.9" r=".7" fill="#fff"/>`;
+  return `<g transform="translate(${x} ${y})">`
+    + '<circle r="9" fill="#c4ae9b"/>'
+    + '<path d="M6 -1.5c6-4.5 15.5-3.5 16.5 1.2s-7.5 7.5-15.5 5.3z" fill="#7d8a96"/>'
+    + eye + '<circle cx="-2.6" cy="3.2" r="2.1" fill="#d7b6c2" opacity=".9"/>'
+    + '<path d="M-4 -8.5l-5-3v6zM-4 -8.5l5-3v6z" fill="#d7b6c2"/><circle cx="-4" cy="-8.5" r="1.6" fill="#9c4e6a"/>'
+    + '</g>';
+};
+const WB_PICS = {
+  /* board lying flat, marker capped, a seed asleep in the soil; Pip dozing beside it */
+  seed: `<path d="M24 74h52l9 14H15z" fill="${WBC.board}" stroke="${WBC.navy}" stroke-width="2.5" stroke-linejoin="round"/>`
+    + `<rect x="34" y="78.5" width="28" height="5" rx="2.5" fill="${WBC.blue}"/><rect x="34" y="78.5" width="9" height="5" rx="2.5" fill="${WBC.navy}"/>`
+    + `<ellipse cx="56" cy="62" rx="13" ry="4" fill="${WBC.soil}"/><path d="M56 61V45" stroke="${WBC.green}" stroke-width="3" stroke-linecap="round"/>`
+    + `<path d="M56 48c-4-8-13-9-15-6 2 5 9 7 15 6zM56 48c4-8 13-9 15-6-2 5-9 7-15 6z" fill="${WBC.green}"/>`
+    + wbPip(20, 56, 'sleep') + `<path d="M24 38h5l-5 5h5M31 30h4l-4 4h4" stroke="${WBC.navy}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  /* board up, careful wavy writing, marker working, a bee buzzing; Pip concentrating */
+  bee: wbBoard(24, 24, 54, 38)
+    + `<path d="M32 38q5-6 10 0t10 0t10 0M32 50q5-6 10 0t10 0" stroke="${WBC.blue}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`
+    + `<path d="M76 74l-10 -9" stroke="${WBC.orange}" stroke-width="5.5" stroke-linecap="round"/><path d="M66.5 65.5l-3 -2.6" stroke="${WBC.navy}" stroke-width="3" stroke-linecap="round"/>`
+    + `<ellipse cx="79" cy="11" rx="4" ry="5.5" fill="#fff" stroke="${WBC.navy}" stroke-width="1.3" transform="rotate(-20 79 11)"/><ellipse cx="86" cy="11" rx="4" ry="5.5" fill="#fff" stroke="${WBC.navy}" stroke-width="1.3" transform="rotate(20 86 11)"/>`
+    + `<ellipse cx="83" cy="19" rx="8" ry="6" fill="${WBC.yellow}" stroke="${WBC.navy}" stroke-width="1.5"/><path d="M80 13.6v10.8M85 13.4v11.2" stroke="${WBC.navy}" stroke-width="1.8"/>`
+    + wbPip(20, 82, 'busy'),
+  /* board held up high (Pip is holding it), three dots for "show me", the sun out */
+  sun: wbBoard(22, 16, 56, 38)
+    + `<circle cx="38" cy="35" r="4" fill="${WBC.blue}"/><circle cx="50" cy="35" r="4" fill="${WBC.blue}"/><circle cx="62" cy="35" r="4" fill="${WBC.blue}"/>`
+    + `<path d="M33 54l-5 32M67 54l5 32" stroke="${WBC.peach}" stroke-width="6" stroke-linecap="round"/>`
+    + `<circle cx="88" cy="11" r="6" fill="${WBC.yellow}"/>`
+    + wbPip(46, 78, 'proud'),
+  /* rain falls, the board is wiped clean (arrow), Pip happy and ready to start again */
+  rain: `<path d="M38 26a6.5 6.5 0 0 1 1.5-12.8 9.5 9.5 0 0 1 18.3-2.4 7.5 7.5 0 0 1 4.2 15.2z" fill="${WBC.cloud}"/>`
+    + `<path d="M43 31l-1.5 5M50 31l-1.5 5M57 31l-1.5 5" stroke="${WBC.navy}" stroke-width="2" stroke-linecap="round"/>`
+    + wbBoard(24, 42, 54, 34)
+    + `<path d="M34 66q16-17 32-2" stroke="${WBC.orange}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M60 59.5l6.5 4.8-7.6 2.6z" fill="${WBC.orange}"/>`
+    + wbPip(17, 86, 'happy'),
+};
+
+/* Pip the platypus speaks in the Ruby Roo voice from recorded clips in audio/pip/.
+   Until a clip is there (or for a step the teacher has renamed) the browser's own voice reads the line. */
+const PIP_PRAISE = ['Wow, beautiful work!', 'You’re a superstar!', 'Great listening!', 'Fantastic effort!', 'Look at that neat writing!', 'Ripper job, well done!'];
+const PIP_SVG = '<svg viewBox="0 0 160 118">'
+  + '<ellipse cx="82" cy="111" rx="58" ry="6" fill="#ebebef"/>'
+  + '<path d="M38 74c-24-2-32 14-24 23 8 7 26 0 36-11z" fill="#a8927f"/>'
+  + '<ellipse cx="78" cy="78" rx="44" ry="28" fill="#c4ae9b"/><ellipse cx="84" cy="89" rx="28" ry="13" fill="#e8dccf"/>'
+  + '<path d="M56 100c-7 3-7 9 0 9h13c2-4 0-9-5-9zM94 100c-7 3-7 9 0 9h13c2-4 0-9-5-9z" fill="#7d8a96"/>'
+  + '<circle cx="112" cy="58" r="22" fill="#c4ae9b"/>'
+  + '<path d="M124 55c11-7 29-5 31 3s-14 15-29 11z" fill="#7d8a96"/><circle cx="146" cy="57" r="1.4" fill="#4f5963"/><circle cx="150" cy="58.5" r="1.4" fill="#4f5963"/>'
+  + '<circle cx="114" cy="51" r="4.4" fill="#2f2e35"/><circle cx="115.6" cy="49.4" r="1.5" fill="#fff"/><circle cx="106" cy="61" r="4" fill="#d7b6c2" opacity=".85"/>'
+  + '<path d="M103 37l-11-6v12zM103 37l11-6v12z" fill="#d7b6c2"/><circle cx="103" cy="37" r="3.2" fill="#9c4e6a"/>'
+  + '</svg>';
+let pipAudio = null, pipBubble = null;
+function pipSpeak(text) {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+  const v = vs.find(v => /en-AU/i.test(v.lang) && /female|karen|catherine|natasha/i.test(v.name)) || vs.find(v => /en-AU/i.test(v.lang)) || vs[0];
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-AU';
+  u.pitch = 1.3; u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+/* clip: a recording name, or a list to try in order; if none plays, the browser voice reads the text */
+function pipSay(clip, text) {
+  pipAudio?.pause();
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  pipBubble?.(text);
+  const tryClip = list => {
+    if (!list.length) { pipSpeak(text); return; }
+    const a = pipAudio = new Audio(`audio/pip/${list[0]}.mp3`);
+    let fell = false;
+    const next = () => { if (fell || pipAudio !== a) return; fell = true; tryClip(list.slice(1)); };
+    a.addEventListener('error', next, { once: true });
+    a.play().catch(next);
+  };
+  tryClip(clip ? [].concat(clip) : []);
+}
+
+const PIPS = { 1: [4],2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 
 const WIDGETS = {
   picker: {
@@ -887,6 +974,166 @@ const WIDGETS = {
           if (rows.length < 6) { rows.push({ name: `Team ${rows.length + 1}`, n: 0 }); save(); draw(); }
         } }),
         el('button', { class: 'w-btn', text: 'Reset to 0', onclick: () => { rows.forEach(r => r.n = 0); save(); draw(); } })));
+    },
+  },
+
+  whiteboard: {
+    title: 'Whiteboards', icon: 'whiteboard', tone: 'pistachio', w: 780, h: 380,
+    /* the whiteboard expectations card; in number formation it stays up while each picked child
+       goes Sleepy Seed → Busy Bee → Sunflower → Rain to Rub Out before the next child is picked */
+    build(root, d) {
+      const WB = window.WhiteboardSteps;
+      const cls = activeClass();
+      const here = present(cls);
+      d.mode ||= 'card';
+      d.step = clamp(d.step | 0, 0, WB.LAST);
+      d.form ||= {};
+      d.steps ||= [];
+      const formation = d.mode === 'formation';
+      const form = () => {
+        const f = d.form[cls.id] ||= WB.start();
+        f.done = f.done.filter(n => here.includes(n));
+        if (f.child && !here.includes(f.child)) Object.assign(f, { child: null, step: 0 });   // marked away mid-turn
+        return f;
+      };
+
+      /* ---- the card ---- */
+      const card = el('div', { class: 'wb' });
+      const drawCard = () => {
+        const now = formation ? form().step : d.step;
+        card.replaceChildren(...WB.stepsWith(d.steps).map((s, i) => {
+          const pic = el('span', { class: 'wb-pic', 'aria-hidden': 'true' });
+          pic.innerHTML = `<svg viewBox="0 0 100 100">${WB_PICS[s.key]}</svg>`;
+          const props = { class: 'wb-step' + (i === now ? ' now' : ''), 'aria-current': i === now && 'step' };
+          if (!formation) Object.assign(props, { type: 'button', title: `Show ${s.label}`, onclick: () => { d.step = i; save(); draw(); callStep(); } });
+          return el(formation ? 'div' : 'button', props,
+            pic, el('span', { class: 'wb-label', text: s.label }), el('span', { class: 'wb-text', text: s.text }));
+        }));
+      };
+
+      /* ---- the go button: next step, or pick the next child ---- */
+      const nameBox = el('div', { class: 'wb-name', role: 'status', 'aria-live': 'polite' });
+      const goBtn = el('button', { class: 'w-btn go', onclick: () => go() });
+      const meta = el('span', { class: 'w-meta' });
+      let spin = null;
+      const drawBar = () => {
+        const st = WB.stepsWith(d.steps);
+        if (!formation) { goBtn.textContent = `Next: ${st[WB.nextStep(d.step)].label}`; return; }
+        const f = form();
+        nameBox.textContent = f.child || (f.done.length ? 'Ready for the next child' : 'Pick a child to start');
+        nameBox.classList.toggle('blank', !f.child);
+        goBtn.textContent = !f.child ? (f.done.length ? 'Pick the next child' : 'Pick a child')
+          : f.step === WB.LAST ? `Back to ${st[0].label}` : `Next: ${st[f.step + 1].label}`;
+        goBtn.disabled = !!spin || !here.length;
+        meta.textContent = `${here.length - f.done.length} of ${here.length} left`;
+      };
+      const draw = () => { drawCard(); drawBar(); };
+      /* Pip reads each step out in her own voice (name and line). Words the teacher has changed
+         have no recording, so the browser voice reads those. */
+      const callStep = () => {
+        if (d.sound === false) return;
+        const i = formation ? form().step : d.step;
+        const s = WB.stepsWith(d.steps)[i], def = WB.DEFAULT_STEPS[i];
+        const mine = s.label !== def.label || s.text !== def.text;
+        pipSay(mine ? null : [`line-${s.key}`, `step-${s.key}`], `${s.label}! ${s.text}`);
+      };
+      const soundBtn = el('button', { class: 'w-btn round', title: 'Pip reads each step', onclick: () => {
+        d.sound = d.sound === false; save(); showSound();
+        if (d.sound) callStep(); else { pipAudio?.pause(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+      } });
+      const showSound = () => {
+        const on = d.sound !== false;
+        soundBtn.textContent = on ? '🔊' : '🔈';
+        soundBtn.setAttribute('aria-label', on ? 'Pip’s voice is on. Turn it off' : 'Pip’s voice is off. Turn it on');
+        soundBtn.setAttribute('aria-pressed', String(on));
+      };
+      showSound();
+      const go = () => {
+        if (!formation) { d.step = WB.nextStep(d.step); save(); draw(); callStep(); return; }
+        const f = form();
+        if (f.child) { d.form[cls.id] = WB.advance(f); save(); draw(); if (d.form[cls.id].child) callStep(); return; }
+        const next = WB.pick(f, here);
+        if (!next.child || spin) return;
+        goBtn.disabled = true;
+        nameBox.classList.remove('blank', 'pop');
+        let ticks = 0;
+        spin = setInterval(() => {
+          if (++ticks < 14) { nameBox.textContent = rand(here); return; }
+          clearInterval(spin); spin = null;
+          d.form[cls.id] = next; save(); draw(); callStep();
+          nameBox.classList.add('pop');
+        }, 70);
+      };
+
+      /* ---- settings: the school's own words ---- */
+      const panel = el('div', { class: 'wb-set', hidden: true });
+      const setBtn = el('button', { class: 'w-btn round', text: '⋯', title: 'Change the words', 'aria-label': 'Change the step names and words', 'aria-expanded': 'false' });
+      const showSet = on => {
+        panel.hidden = !on; card.hidden = on;
+        setBtn.setAttribute('aria-expanded', String(on));
+        if (on) fillSet(); else draw();
+      };
+      setBtn.addEventListener('click', () => showSet(panel.hidden));
+      const fillSet = () => {
+        const st = WB.stepsWith(d.steps);
+        panel.replaceChildren(
+          el('p', { class: 'w-meta', text: 'Use your school’s own words. An empty box goes back to the usual words.' }),
+          ...WB.DEFAULT_STEPS.map((def, i) => {
+            const mine = d.steps[i] ||= {};
+            const name = el('input', { class: 'wb-in', value: st[i].label, placeholder: def.label, 'aria-label': `Step ${i + 1} name`,
+              oninput: e => { mine.label = e.target.value; save(); } });
+            const words = el('textarea', { class: 'wb-in', rows: 2, placeholder: def.text, 'aria-label': `Step ${i + 1} words`,
+              oninput: e => { mine.text = e.target.value; save(); } });
+            words.value = st[i].text;
+            return el('div', { class: `wb-set-row tone-${WB_TONES[i]}` }, el('span', { class: 'wb-num', text: i + 1 }), name, words);
+          }),
+          el('div', { class: 'w-row' },
+            el('button', { class: 'w-btn', text: 'Use the usual words', onclick: () => { d.steps = []; save(); fillSet(); } }),
+            el('button', { class: 'w-btn go', text: 'Done', onclick: () => showSet(false) })));
+      };
+
+      const modeSel = el('select', { class: 'w-select', 'aria-label': 'Mode', onchange: e => { d.mode = e.target.value; save(); rebuild('whiteboard'); } },
+        el('option', { value: 'card', text: 'Card only', selected: !formation }),
+        el('option', { value: 'formation', text: 'Number formation', selected: formation }));
+
+      let top = null, bottom;
+      if (!formation) bottom = el('div', { class: 'w-row' }, goBtn, soundBtn, modeSel, setBtn);
+      else {
+        top = cls.students.length
+          ? el('div', { class: 'w-row wb-bar' }, nameBox, goBtn)
+          : el('div', { class: 'w-row wb-bar' }, el('span', { class: 'w-meta', text: 'No names in this class yet.' }),
+              el('button', { class: 'w-btn go', text: 'Add class list', onclick: openClassDialog }));
+        bottom = el('div', { class: 'w-row' }, meta,
+          el('button', { class: 'w-btn', text: 'Start over', onclick: () => { d.form[cls.id] = WB.start(); save(); draw(); } }),
+          classSwitch(), soundBtn, modeSel, setBtn);
+      }
+      draw();
+      root.append(...[top, card, panel, bottom].filter(Boolean));
+      return () => clearInterval(spin);
+    },
+  },
+
+  pip: {
+    title: 'Pip the platypus', icon: 'pip', tone: 'blue', w: 380, h: 500,
+    build(root) {
+      const bubble = el('div', { class: 'pip-bubble', role: 'status', 'aria-live': 'polite', text: 'G’day! I’m Pip.' });
+      const art = el('div', { class: 'pip-art', 'aria-hidden': 'true' });
+      art.innerHTML = PIP_SVG;
+      pipBubble = text => { bubble.textContent = text; art.classList.remove('talk'); void art.offsetWidth; art.classList.add('talk'); };
+      let last = -1;
+      const cheer = () => {
+        let i;
+        do i = Math.floor(Math.random() * PIP_PRAISE.length); while (i === last);
+        last = i;
+        pipSay(`praise-${i + 1}`, PIP_PRAISE[i]);
+      };
+      root.append(
+        el('div', { class: 'w-fill pip-stage' }, bubble, art),
+        el('div', { class: 'w-row' }, el('button', { class: 'w-btn go', text: 'Cheer!', onclick: cheer })),
+        el('div', { class: 'w-row pip-lines' }, PIP_PRAISE.map((t, i) =>
+          el('button', { class: 'w-btn', text: t, onclick: () => pipSay(`praise-${i + 1}`, t) }))),
+        el('p', { class: 'w-meta pip-note', text: 'Pip also reads each step on the Whiteboards card.' }));
+      return () => { pipBubble = null; pipAudio?.pause(); };
     },
   },
 
