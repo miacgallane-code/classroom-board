@@ -38,6 +38,7 @@ const ICONS = {
   note: '<path d="M5 4.5h14v9.5l-5 5H5z"/><path d="M19 14h-5v5"/>',
   hush: '<path d="M4.5 19.5c0-8.3 6.2-14.5 15-15 0 8.8-6.2 15-15 15z"/><path d="M4.5 19.5l8-8"/>',
   jewels: '<path d="M7.5 4h9l4.5 5.5L12 20.5 3 9.5z"/><path d="M3 9.5h18M9.5 4 8 9.5l4 11 4-11L14.5 4"/>',
+  mixup: '<path d="M8 8.5a3 3 0 0 1 4.5-1.8 3 3 0 0 1 4.8 1.3 3 3 0 0 1 .7 5.6 3 3 0 0 1-3.8 2.4H10a3 3 0 0 1-2.4-1.3"/><ellipse cx="6.3" cy="12" rx="2.8" ry="3.2"/><path d="M10.5 16v3.5M15.5 16v3.5"/>',
   sleigh: '<path d="M4 6.5h4l2.5 6H20"/><path d="M4 6.5v5a4 4 0 0 0 4 4h9.5a2.5 2.5 0 0 0 2.5-2.5v-3"/><path d="M3 19.5h15a3 3 0 0 0 3-3M8 15.5v4M16 15.5v4"/>',
   install: '<rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M12 7v6M9 10.5l3 3 3-3M8 20h8"/>',
   gbg: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v3.5M8.5 20h7M10 16.5h4l.5 3.5h-5z"/>',
@@ -453,7 +454,7 @@ $('#btn-class').addEventListener('click', openClassDialog);
 /* ---------- switching class (a new class every lesson) ---------- */
 function refreshClass() {
   $('#rail-class-name').textContent = activeClass().name || 'Untitled class';
-  ['picker', 'groups', 'counter', 'gbg', 'jewels'].forEach(rebuild);
+  ['picker', 'groups', 'counter', 'gbg', 'jewels', 'mixup'].forEach(rebuild);
 }
 function switchClass(id) {
   state.activeClass = id;
@@ -2286,6 +2287,492 @@ const WIDGETS = {
     },
   },
 
+  /* Mr MixUp: a maths warm-up. A silly sheep makes deliberate mistakes and the class catches
+     and fixes them. Words and presets live in mixup-data.js, the rules in mixup-logic.js.
+     Names and exit-check marks stay in this browser on this device. */
+  mixup: {
+    title: 'Mr MixUp', icon: 'mixup', tone: 'pistachio', w: 1000, h: 620, minH: 420,
+    pos: () => {
+      const w = Math.min(1000, innerWidth - 120), h = Math.min(620, innerHeight - 32);
+      return { w, h, x: Math.max(100, Math.round((innerWidth - w) / 2)), y: Math.max(16, Math.round((innerHeight - h) / 2)) };
+    },
+    build(root, d) {
+      const M = window.MIXUP, L = window.MIXUP_LOGIC;
+      if (!M || !L) { root.append(el('p', { class: 'note', text: 'Mr MixUp couldn’t load. Reload the page to try again.' })); return; }
+      root.classList.add('mx-root');
+      const node = root.closest('.widget');
+      node?.classList.toggle('mj-max', !!d.max);
+      const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+      d.byClass ||= {};
+      d.relief ||= { on: false, week: 'w7' };
+      const cls = activeClass();
+      const S = d.byClass[d.test ? 'test' : cls.id] ||= {};
+      S.pool ||= []; S.results ||= []; S.defaults ||= {}; S.custom ||= [];
+      S.tplExit ||= { question: 'Show me fourteen on your board.', key: '14' };
+      const roster = () => d.test ? M.testNames.slice() : present(cls);
+      const WEEKS = [...Object.keys(M.presets), 'tpl'];
+      const presetOf = w => M.presets[w] || M.template;
+
+      /* session settings: a week preset fills them all; the class's usual pace goes on top.
+         They last until the teacher starts a new lesson. */
+      const PACE = { countMs: 700, pause: 3, minutes: 5, threshold: 80 };
+      const newSession = week => {
+        const p = presetOf(week);
+        const listed = week === 'tpl' ? M.template.types : p.items.map(it => it.type);
+        return {
+          week, range: p.range, cue: p.cue, rate: 'normal',
+          types: Object.fromEntries(Object.keys(M.types).map(t => [t, listed.includes(t)])),
+          wool: 'cream', size: 'md', wobble: true, voice: false, exitMix: false, music: p.music || '',
+          ...PACE, ...S.defaults,
+        };
+      };
+      const relief = () => !!d.relief.on;
+      if (!S.session || !WEEKS.includes(S.session.week)) S.session = newSession('w7');
+      if (relief() && S.session.week !== d.relief.week) S.session = newSession(d.relief.week);
+      const ses = () => S.session;
+
+      const timers = new Set();
+      const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
+      let holdT = null, run = null, setOpen = false, group = null, lineToken = 0;
+
+      /* Mr MixUp's voice: clips recorded in ElevenLabs (mixup-audio/, listed in mixup-voice.js),
+         one per fixed line, so they play offline. Off unless the teacher turns it on, and only
+         after a tap. A line with no clip (Weeks 11+) is speech bubble only. He giggles before a
+         mix-up and bleats after it. Only the sound changes; the words on screen don't. */
+      const CLIPS = new Set(window.MIXUP_VOICE || []);
+      const GIGGLES = ['Hee hee!', 'Tee hee!'];
+      const BLEATS = ['Baa-aa!', 'Meh-eh-eh!'];
+      let talkToken = 0, audio = null;
+      const stopTalk = () => { talkToken++; if (audio) { audio.onended = audio.onerror = null; audio.pause(); audio = null; } };
+      const hasClip = text => CLIPS.has(L.clipId(text));
+      const speak = (text, { mix = false, parts = null, force = false } = {}) => {
+        if ((!ses().voice && !force) || !text) return;
+        stopTalk();
+        const my = talkToken;
+        const lines = [...(mix ? [rand(GIGGLES)] : []), ...(parts || [text]), ...(mix ? [rand(BLEATS)] : [])];
+        const ids = lines.filter(hasClip).map(L.clipId);
+        const next = () => {
+          if (my !== talkToken || !ids.length) { if (my === talkToken) audio = null; return; }
+          const a = audio = new Audio(`mixup-audio/${ids.shift()}.mp3`);
+          let moved = false;
+          const on = () => { if (!moved) { moved = true; next(); } };   // ended, failed or blocked: next clip
+          a.onended = a.onerror = on;
+          a.play().catch(on);
+        };
+        next();
+      };
+
+      /* ---- what's on the board: numerals, dots to take away, ten frames ---- */
+      const dotsSvg = ({ n, cross = 0 }) => {
+        const per = 5, rows = Math.ceil(n / per), g = 44;
+        let s = '';
+        for (let i = 0; i < n; i++) {
+          const x = 22 + (i % per) * g, y = 22 + Math.floor(i / per) * g, gone = i >= n - cross;
+          s += `<circle cx="${x}" cy="${y}" r="16" fill="${gone ? '#E5DDE5' : '#B69FB4'}"/>`;
+          if (gone) s += `<path d="M${x - 12} ${y - 12}L${x + 12} ${y + 12}M${x + 12} ${y - 12}L${x - 12} ${y + 12}" stroke="#765673" stroke-width="5" stroke-linecap="round"/>`;
+        }
+        return `<svg viewBox="0 0 ${per * g} ${rows * g}" role="img" aria-label="${n} dots${cross ? `, ${cross} crossed out` : ''}">${s}</svg>`;
+      };
+      const frameSvg = ({ a, b = 0 }) => {
+        const total = a + b, frames = Math.max(1, Math.ceil(total / 10)), c = 40, fw = 5 * c, gap = 18;
+        let s = '';
+        for (let f = 0; f < frames; f++) {
+          const ox = f * (fw + gap);
+          s += `<rect x="${ox + 2}" y="2" width="${fw - 4}" height="${2 * c - 4}" rx="8" fill="#fff" stroke="#6f6d78" stroke-width="3"/>`;
+          for (let k = 1; k < 5; k++) s += `<path d="M${ox + k * c} 3V${2 * c - 3}" stroke="#aeacb7" stroke-width="2"/>`;
+          s += `<path d="M${ox + 3} ${c}H${ox + fw - 3}" stroke="#aeacb7" stroke-width="2"/>`;
+        }
+        for (let i = 0; i < total; i++) {
+          const f = Math.floor(i / 10), k = i % 10, x = f * (fw + gap) + (k % 5) * c + c / 2, y = Math.floor(k / 5) * c + c / 2;
+          s += `<circle cx="${x}" cy="${y}" r="${c * 0.34}" fill="${i < a ? '#A3BFC7' : '#D7B6C2'}" stroke="${i < a ? '#426a75' : '#9c4e6a'}" stroke-width="2.5"/>`;
+        }
+        return `<svg viewBox="0 0 ${frames * fw + (frames - 1) * gap} ${2 * c}" role="img" aria-label="Ten frame showing ${b ? `${a} and ${b}` : a}">${s}</svg>`;
+      };
+      const boardView = (b, ...extra) => {
+        const box = el('div', { class: 'mx-board' });
+        if (b?.text) box.append(el('div', { class: 'mx-num' + (b.mirror ? ' mirror' : ''), text: b.text }));
+        const pic = b?.dots ? dotsSvg(b.dots) : b?.frame ? frameSvg(b.frame) : '';
+        if (pic) { const p = el('div', { class: 'mx-pic' }); p.innerHTML = pic; box.append(p); }
+        box.append(...extra.filter(Boolean));
+        return box;
+      };
+      const fixBox = (k, text) => el('div', { class: 'mx-fix' }, el('span', { class: 'mx-fix-k', text: k }), el('strong', { text }));
+      const cueBox = () => el('div', { class: 'mx-cue', text: M.cues[ses().cue]?.say || '' });
+
+      /* ---- Mr MixUp and his speech bubble ---- */
+      const sheepBox = () => {
+        const s = el('div', { class: `mx-sheep mx-${ses().size || 'md'}` });
+        s.innerHTML = M.sheep(ses().wool);
+        return s;
+      };
+      /* the wool wobble comes first, then the line. A count appears one number at a time. */
+      const sayLine = (bubble, sheep, text, { wobble = false, count = false, parts = null, done } = {}) => {
+        const my = ++lineToken;
+        bubble.textContent = ''; bubble.classList.add('quiet');
+        const show = () => {
+          if (my !== lineToken) return;
+          bubble.classList.remove('quiet');
+          speak(text, { mix: wobble && ses().wobble, parts });
+          if (!count) { bubble.textContent = text; done?.(); return; }
+          const bits = text.split(/(?<=,)\s+/);      // a count, one number at a time
+          let i = 0;
+          const next = () => {
+            if (my !== lineToken) return;
+            bubble.textContent = bits.slice(0, ++i).join(' ');
+            if (i < bits.length) later(next, ses().countMs); else done?.();
+          };
+          next();
+        };
+        if (wobble && ses().wobble) {
+          sheep.classList.remove('wobble'); void sheep.offsetWidth; sheep.classList.add('wobble');
+          if (reduce()) { show(); return; }     // a still "Wool wobble!" tag shows instead of the shake
+          later(() => { sheep.classList.remove('wobble'); show(); }, 1300);
+        } else show();
+      };
+
+      /* ---- step timer: a gentle countdown for each step; the teacher moves on ---- */
+      const clock = el('span', { class: 'mx-clock', 'aria-label': 'Time left for this step' });
+      const setGroup = (key, secs) => { if (group?.key !== key) group = { key, ends: Date.now() + secs * 1000 }; };
+      const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      const syncClock = () => {
+        clock.hidden = !group;
+        if (!group) return;
+        const left = Math.round((group.ends - Date.now()) / 1000);
+        clock.textContent = left >= 0 ? fmt(left) : '+' + fmt(-left);
+        clock.classList.toggle('over', left < 0);
+      };
+      const tick = setInterval(syncClock, 500);
+
+      /* ---- name spinner: same rule as Magic Jewels, everyone once before any repeats ---- */
+      const spinName = (box, done) => {
+        const here = roster();
+        if (!here.length) { box.textContent = 'Add a class list to pick names'; box.classList.add('blank'); done(); return; }
+        const { name, pool } = L.takeName(S.pool, here);
+        S.pool = pool; run.name = name; save();
+        const land = () => { box.textContent = name; if (!reduce()) { void box.offsetWidth; box.classList.add('pop'); } done(); };
+        if (reduce() || here.length < 2) { land(); return; }
+        let i = 0, wait = 45;
+        const step = () => {
+          if (++i > 18) { land(); return; }
+          let x;
+          do x = rand(here); while (x === box.textContent);
+          box.textContent = x; wait *= 1.13; later(step, wait);
+        };
+        step();
+      };
+
+      const setMax = on => {
+        d.max = on; node?.classList.toggle('mj-max', on); save();
+        if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+        else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        paint();
+      };
+      const fullBtn = () => el('button', { class: 'w-btn', text: d.max ? 'Exit full screen' : 'Full screen', onclick: () => setMax(!d.max) });
+
+      const ROUTINE = () => ['Watch for the wool wobble', `${M.cues[ses().cue]?.label || 'Boards'}: everyone answers`,
+        'Wait, then tap Reveal', 'Say the fix together', 'Mr MixUp tries again', 'Spin: one child says it alone'];
+      const routineList = (now = -1) => el('ol', { class: 'mx-routine', 'aria-label': 'The correction routine' },
+        ROUTINE().map((t, i) => el('li', { class: i === now ? 'now' : '', text: t })));
+
+      /* ---- a warm-up run (kept in memory: closing it goes back to the start card) ---- */
+      const start = () => {
+        const s = ses(), p = presetOf(s.week);
+        const items = s.week === 'tpl'
+          ? L.buildTemplate({ types: Object.keys(s.types).filter(t => s.types[t]), range: s.range, rate: s.rate, custom: S.custom })
+          : L.presetItems(p, s.types);
+        const exit = s.week === 'tpl'
+          ? { question: S.tplExit.question, key: S.tplExit.key, board: null, wrongLine: '' }
+          : p.exit;
+        run = { p, items, exit, i: 0, phase: 'hook', marks: {}, name: null, saved: false, times: L.stepTimes(s.minutes, items.length) };
+        group = null; setOpen = false;
+        paint();
+      };
+      const go = (phase, i) => { if (i != null) run.i = i; run.phase = phase; paint(); };
+      const stop = () => {
+        if (run.phase !== 'music' && !confirm('Stop this warm-up and go back to the start?')) return;
+        run = null; group = null; paint();
+      };
+      const newLesson = () => {
+        if (!confirm('Start a new lesson? Settings go back to the week’s preset and this class’s usual pace.')) return;
+        S.session = newSession(ses().week); setOpen = false; save(); paint();
+      };
+
+      const runScreen = () => {
+        const s = ses(), r = run, it = r.items[r.i], n = r.items.length;
+        const bubble = el('div', { class: 'mx-bubble', role: 'status', 'aria-live': 'polite' });
+        const sheep = sheepBox();
+        const label = el('span', { class: 'mx-step' });
+        const foot = el('div', { class: 'mx-foot' });
+        const big = (text, onclick, kind = '') => el('button', { class: 'mx-btn ' + kind, text, onclick });
+        let board, now = -1;
+
+        if (r.phase === 'hook') {
+          setGroup('hook', r.times.hook);
+          label.textContent = `${r.p.label}: ${r.p.title}`;
+          board = el('div', { class: 'mx-board' }, el('p', { class: 'mx-li', text: r.p.intention }), el('p', { class: 'mx-why', text: r.p.why }));
+          sayLine(bubble, sheep, s.wobble
+            ? 'Watch me! When I do my wool wobble, I might mix something up. Can you catch me?'
+            : 'Watch me carefully. I might mix something up. Can you catch me?', { wobble: true });
+          foot.append(big('Start the mix-ups', () => go('mix', 0), 'go'));
+        } else if (r.phase === 'mix') {
+          setGroup('item' + r.i, r.times.item); now = 1;
+          label.textContent = `Mix-up ${r.i + 1} of ${n}`;
+          board = boardView(it.board, cueBox());
+          const reveal = big('Reveal', () => go('fix'), 'go');
+          reveal.disabled = true;
+          const countdown = () => {
+            let left = s.pause;
+            const step = () => {
+              if (left <= 0) { reveal.disabled = false; reveal.textContent = 'Reveal'; return; }
+              reveal.textContent = `Reveal in ${left}`; left--; later(step, 1000);
+            };
+            step();
+          };
+          foot.append(reveal);
+          sayLine(bubble, sheep, it.say, { wobble: !it.correct, count: it.count, done: countdown });
+        } else if (r.phase === 'fix') {
+          now = 3;
+          label.textContent = `Fix ${r.i + 1} of ${n}`;
+          if (it.correct) {
+            board = boardView(it.fixed || it.board, fixBox('Say it together:', 'Yes, that’s right!'));
+            sayLine(bubble, sheep, 'I got that one right! Did you check?');
+            foot.append(big('Spin for a name', () => go('pick'), 'go'));
+          } else {
+            board = boardView(it.fixed, fixBox('Say it together:', it.fix));
+            sayLine(bubble, sheep, 'Oops! Can you say it the right way?');
+            foot.append(big('Mr MixUp tries again', () => go('again'), 'go'));
+          }
+        } else if (r.phase === 'again') {
+          now = 4;
+          label.textContent = `Mr MixUp tries again (${r.i + 1} of ${n})`;
+          board = boardView(it.fixed);
+          sayLine(bubble, sheep, it.right, { count: it.count });
+          foot.append(big('Spin for a name', () => go('pick'), 'go'));
+        } else if (r.phase === 'pick') {
+          now = 5;
+          label.textContent = `Your turn (${r.i + 1} of ${n})`;
+          const nameBox = el('div', { class: 'mx-name', 'aria-live': 'polite' });
+          board = boardView(it.fixed, el('div', { class: 'mx-pick' }, nameBox, el('p', { class: 'mx-why', text: 'Say it on your own.' })));
+          sayLine(bubble, sheep, 'Your turn! Say it the right way.');
+          const last = r.i + 1 >= n;
+          const next = big(last ? 'Exit check' : 'Next mix-up', () => last ? go('exit') : go('mix', r.i + 1), 'go');
+          const again = big('Spin again', () => { next.disabled = again.disabled = true; nameBox.classList.remove('pop', 'blank'); spinName(nameBox, () => { next.disabled = again.disabled = false; }); });
+          next.disabled = again.disabled = true;
+          foot.append(again, next);
+          spinName(nameBox, () => { next.disabled = again.disabled = false; });
+        } else if (r.phase === 'exit') {
+          setGroup('exit', r.times.exit);
+          label.textContent = 'Exit check';
+          const mixIt = s.exitMix && r.exit.wrongLine;
+          board = boardView(r.exit.board, el('div', { class: 'mx-num small', text: r.exit.question }), cueBox());
+          sayLine(bubble, sheep, mixIt ? `${r.exit.question} ${r.exit.wrongLine}` : r.exit.question,
+            { wobble: !!mixIt, parts: mixIt ? [r.exit.question, r.exit.wrongLine] : null });
+          foot.append(big('Mark answers', () => go('mark'), 'go'));
+        } else if (r.phase === 'mark') {
+          setGroup('exit', r.times.exit);
+          label.textContent = 'Exit check: tap each child';
+          const here = roster();
+          const tally = el('span', { class: 'mx-small' });
+          const done = big('Done marking', () => go('result'), 'go');
+          const sync = () => {
+            const m = Object.values(r.marks).filter(Boolean).length;
+            tally.textContent = `${m} of ${here.length} marked`;
+            done.disabled = !m;
+          };
+          const VAL = { right: '✓ Right', wrong: '– Not yet' };
+          const btns = here.map(nm => {
+            const v = el('span', { class: 'mx-mark-val' });
+            const b = el('button', { class: 'mx-mark', onclick: () => {
+              r.marks[nm] = r.marks[nm] === 'right' ? 'wrong' : r.marks[nm] === 'wrong' ? undefined : 'right';
+              paintMark(); sync();
+            } }, el('span', { class: 'mx-mark-name', text: nm }), v);
+            const paintMark = () => { v.textContent = VAL[r.marks[nm]] || ''; b.classList.toggle('set', !!r.marks[nm]); };
+            paintMark();
+            return b;
+          });
+          board = el('div', { class: 'mx-board mx-marking' },
+            el('p', { class: 'mx-key', text: `Question: ${r.exit.question}   Right answer: ${r.exit.key}` }),
+            here.length ? el('div', { class: 'mx-marks' }, btns) : el('p', { class: 'mx-why', text: 'There are no names to mark. Add a class list first.' }),
+            el('div', { class: 'mx-row' }, tally,
+              el('button', { class: 'w-btn', text: 'Mark everyone else right', onclick: () => {
+                here.forEach(nm => { r.marks[nm] ||= 'right'; });
+                paint();
+              } })));
+          sync();
+          sayLine(bubble, sheep, 'Tap each name once for right, twice for not yet.');
+          foot.append(done);
+        } else if (r.phase === 'result') {
+          group = null;
+          const res = L.eightyEighty(r.marks, s.threshold);
+          if (!r.saved) {
+            S.results.unshift({ date: today(), week: s.week, weekLabel: r.p.label, question: r.exit.question,
+              marks: { ...r.marks }, pct: res.pct, moveOn: res.moveOn, threshold: s.threshold });
+            S.results.length = Math.min(S.results.length, 300);
+            r.saved = true; save();
+          }
+          label.textContent = 'Exit check: how did the class go?';
+          board = el('div', { class: 'mx-board' },
+            el('div', { class: 'mx-pct', text: `${res.pct}%` }),
+            el('p', { class: 'mx-why', text: `of the class got it right (${res.right} of ${res.total})` }),
+            el('div', { class: 'mx-verdict ' + (res.moveOn ? 'on' : 're'), text: res.moveOn ? 'Move on' : 'Reteach' }),
+            el('p', { class: 'mx-small', text: `80/80 rule: move on when ${s.threshold}% or more are right.` }));
+          sayLine(bubble, sheep, 'Thanks for catching my mix-ups!');
+          foot.append(big('Music finish', () => go('music'), 'go'));
+        } else {
+          group = null;
+          label.textContent = 'Finished';
+          board = el('div', { class: 'mx-board' },
+            el('p', { class: 'mx-why', text: 'Music finish' }),
+            el('p', { class: 'mx-li', text: s.music || r.p.music || 'Your music game' }));
+          sayLine(bubble, sheep, 'Great catching today. See you next time!');
+          foot.append(big('Back to the start', () => { run = null; paint(); }, 'go'));
+        }
+
+        syncClock();
+        const top = el('div', { class: 'mx-top' }, label, el('span', { class: 'mj-grow' }), clock,
+          el('button', { class: 'mx-btn quiet', text: 'Stop', onclick: stop }));
+        const main = el('div', { class: 'mx-main' + (r.phase === 'mark' ? ' marking' : '') },
+          el('div', { class: 'mx-char' }, bubble, sheep), board);
+        return [top, main, foot, relief() ? routineList(now) : null].filter(Boolean);
+      };
+
+      /* ---- start card ---- */
+      const holdUnlock = () => {
+        const b = el('button', { class: 'mx-hold', text: 'Teacher: press and hold for 3 seconds to unlock settings' });
+        const up = () => { clearTimeout(holdT); b.classList.remove('holding'); };
+        b.addEventListener('pointerdown', e => {
+          e.preventDefault(); b.classList.add('holding');
+          holdT = setTimeout(() => { d.relief.on = false; save(); paint(); }, 3000);
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, up));
+        return b;
+      };
+      const startCard = () => {
+        const s = ses(), p = presetOf(s.week), here = roster();
+        const weeks = el('div', { class: 'mx-weeks', role: 'group', 'aria-label': 'Choose the week' },
+          WEEKS.map(w => el('button', {
+            class: 'mx-week' + (w === s.week ? ' on' : ''), 'aria-pressed': String(w === s.week),
+            onclick: () => { if (w !== s.week) { S.session = newSession(w); save(); paint(); } },
+          }, el('strong', { text: presetOf(w).label }), el('span', { text: presetOf(w).title }))));
+        return el('div', { class: 'mx-start' },
+          el('div', { class: 'mx-start-head' }, sheepBox(),
+            el('div', {}, el('h3', { class: 'mx-title', text: 'Mr MixUp' }),
+              el('p', { class: 'mx-lead', text: 'Catch Mr MixUp’s maths mix-ups and fix them together.' }))),
+          relief()
+            ? el('div', { class: 'mx-relief' },
+              el('p', { class: 'mx-relief-flag', text: 'Relief lesson: everything is set up. Just tap Start.' }),
+              el('p', { class: 'mx-relief-week', text: `${p.label}: ${p.title}` }),
+              routineList())
+            : weeks,
+          el('p', { class: 'mx-small', text: `${p.intention}   ·   ${M.ranges[s.range]?.label}   ·   ${s.minutes} minutes` }),
+          here.length ? null : el('p', { class: 'mx-small', text: 'There are no names in this class yet. Add a class list, or try test mode in Settings.' }),
+          el('div', { class: 'mx-row' },
+            el('button', { class: 'mx-btn go', text: 'Start warm-up', onclick: start }),
+            relief() ? null : el('button', { class: 'w-btn', text: 'Settings', 'aria-expanded': String(setOpen), onclick: () => { setOpen = !setOpen; paint(); } }),
+            relief() ? null : el('button', { class: 'w-btn', text: 'New lesson', onclick: newLesson }),
+            fullBtn()),
+          relief() ? holdUnlock() : el('p', { class: 'mx-small', text: d.test
+            ? 'Test mode: made-up names. Nothing is saved for a real class.'
+            : `For ${cls.name || 'this class'}. Names and marks are saved only on this device.` }));
+      };
+
+      /* ---- settings (start card only: no small controls during the warm-up) ---- */
+      const setS = (k, v) => { ses()[k] = v; save(); paint(); };
+      const opts = (cur, list, onpick, disabled = false) => el('span', { class: 'mj-set-opts' },
+        list.map(([k, text]) => el('button', { class: 'w-btn' + (k === cur ? ' on' : ''), 'aria-pressed': String(k === cur), text, disabled, onclick: () => onpick(k) })));
+      const row = (label, ...kids) => el('div', { class: 'mj-set-row' }, el('span', { text: label }), ...kids);
+      const input = (value, placeholder, oninput) => el('input', { class: 'mx-input', type: 'text', value, placeholder, oninput: e => { oninput(e.target.value); save(); } });
+      const exportCsv = () => {
+        const s = ses(), rows = S.results.filter(r => r.week === s.week).slice().reverse();
+        const csv = L.resultsCsv(rows, d.test ? 'Test' : (cls.name || ''));
+        const file = new Blob(['﻿' + csv], { type: 'text/csv' });
+        const a = el('a', { href: URL.createObjectURL(file), download: `mr-mixup-${presetOf(s.week).label.replace(/\W+/g, '-').toLowerCase()}-${today()}.csv` });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      };
+      const settingsPanel = () => {
+        const s = ses(), tpl = s.week === 'tpl', here = roster();
+        const left = S.pool.filter(n => here.includes(n)).length || here.length;
+        const saved = S.results.filter(r => r.week === s.week).length;
+        const onOff = (k, labels = ['On', 'Off']) => opts(s[k], [[true, labels[0]], [false, labels[1]]], v => setS(k, v));
+        const draft = { say: '', fix: '', text: '', correct: false };
+        return el('div', { class: 'mj-set mx-set', role: 'dialog', 'aria-label': 'Mr MixUp settings' },
+          el('div', { class: 'mj-set-row' }, el('strong', { text: 'Settings for this lesson' }),
+            el('button', { class: 'w-btn', text: 'Close', onclick: () => { setOpen = false; paint(); } })),
+          el('h4', { text: 'Week' }),
+          row('Week preset', opts(s.week, WEEKS.map(w => [w, presetOf(w).label]), w => { S.session = newSession(w); save(); paint(); })),
+          row('Number range', opts(s.range, Object.entries(M.ranges).map(([k, r]) => [k, r.label]), v => setS('range', v))),
+          el('h4', { text: 'Mix-ups' }),
+          el('p', { class: 'mj-set-note', text: tpl
+            ? 'Weeks 11+ makes new items from the types switched on here.'
+            : 'This week’s items are fixed. Switching a type off makes Mr MixUp say that item correctly.' }),
+          el('div', { class: 'mx-types' }, Object.entries(M.types).map(([k, label]) => el('button', {
+            class: 'w-btn' + (s.types[k] ? ' on' : ''), 'aria-pressed': String(!!s.types[k]), text: label,
+            title: L.typeFits(k, s.range) ? '' : 'Doesn’t fit this number range',
+            onclick: () => { s.types[k] = !s.types[k]; save(); paint(); } }))),
+          row('Mix-up rate' + (tpl ? '' : ' (Weeks 11+ only)'), opts(s.rate, Object.entries(L.rates).map(([k, r]) => [k, r.label]), v => setS('rate', v), !tpl)),
+          row('Mr MixUp can mix up the exit check', onOff('exitMix')),
+          el('h4', { text: 'Pace' }),
+          row('Count speed', opts(s.countMs, [[1000, 'Slow'], [700, 'Medium'], [450, 'Fast']], v => setS('countMs', v))),
+          row('Pause before Reveal (seconds)', stepper(s.pause, 1, 10, v => { s.pause = v; save(); }, 'seconds')),
+          row('Response cue', opts(s.cue, Object.entries(M.cues).map(([k, c]) => [k, c.label]), v => setS('cue', v))),
+          row('Warm-up length', opts(s.minutes, [[5, '5 minutes'], [10, '10 minutes']], v => setS('minutes', v))),
+          row('Move on at (80/80 rule, %)', stepper(s.threshold, 70, 90, v => { s.threshold = v; save(); }, 'percent')),
+          row('This class’s usual pace', el('button', { class: 'w-btn', text: 'Save pace for this class', onclick: () => {
+            S.defaults = { countMs: s.countMs, pause: s.pause, minutes: s.minutes, threshold: s.threshold };
+            save(); alert('Saved. New lessons for this class will start with this pace.');
+          } })),
+          el('h4', { text: 'Mr MixUp' }),
+          row('Wool colour', opts(s.wool, Object.entries(M.wools).map(([k, w]) => [k, w.label]), v => setS('wool', v))),
+          row('Size', opts(s.size, [['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large']], v => setS('size', v))),
+          row('Wool wobble', onOff('wobble')),
+          row(`Voice (plays only after you tap; ${CLIPS.size} lines recorded)`, onOff('voice'),
+            el('button', { class: 'w-btn', text: 'Hear him', onclick: () => speak('Nine take away four is six.', { mix: true, force: true }) })),
+          tpl ? el('h4', { text: 'Weeks 11+' }) : null,
+          tpl ? row('Exit check question', input(S.tplExit.question, 'e.g. Show me fourteen on your board.', v => { S.tplExit.question = v; })) : null,
+          tpl ? row('Answer to look for', input(S.tplExit.key, 'e.g. 14', v => { S.tplExit.key = v; })) : null,
+          tpl ? row('Music finish', input(s.music, 'e.g. Teen or Ty', v => { s.music = v; })) : null,
+          tpl ? el('div', { class: 'mx-custom' },
+            el('span', { class: 'mj-set-note', text: 'Your own items run first. Made-up items fill the rest of the five.' }),
+            S.custom.map((c, i) => el('div', { class: 'mj-set-row' },
+              el('span', { text: `${c.correct ? 'CORRECT: ' : ''}${c.say}` }),
+              el('button', { class: 'w-btn', text: 'Remove', onclick: () => { S.custom.splice(i, 1); save(); paint(); } }))),
+            input('', 'Mr MixUp says… e.g. Five and six make ten.', v => { draft.say = v.trim(); }),
+            input('', 'The fix… e.g. Five and five make ten.', v => { draft.fix = v.trim(); }),
+            input('', 'On screen (optional)… e.g. 5 and 6 make 10', v => { draft.text = v.trim(); }),
+            el('label', { class: 'w-check' }, el('input', { type: 'checkbox', onchange: e => { draft.correct = e.target.checked; } }), 'He says it correctly (no fix)'),
+            el('button', { class: 'w-btn', text: 'Add item', onclick: () => {
+              if (!draft.say || (!draft.correct && !draft.fix)) { alert('Type what Mr MixUp says, and the fix.'); return; }
+              S.custom.push({ ...draft }); save(); paint();
+            } })) : null,
+          el('h4', { text: 'Class' }),
+          row(`Spinner: ${left} of ${here.length} names left`, el('button', { class: 'w-btn', text: 'Start the names again', onclick: () => { S.pool = []; save(); paint(); } })),
+          !d.test && state.classes.length > 1 ? row('Class', classSwitch()) : null,
+          row(`Results: ${saved} exit check${saved === 1 ? '' : 's'} saved for ${presetOf(s.week).label}`,
+            el('button', { class: 'w-btn', text: 'Export CSV', disabled: !saved, onclick: exportCsv })),
+          row('Relief mode (locks everything but Start)', el('button', { class: 'w-btn', text: `Lock on ${presetOf(s.week).label}`, onclick: () => {
+            d.relief = { on: true, week: s.week }; setOpen = false; save(); paint();
+          } })),
+          row('Test mode (made-up names)', el('button', { class: 'w-btn', text: d.test ? 'Turn off' : 'Turn on', onclick: () => { d.test = !d.test; save(); rebuild('mixup'); } })),
+          el('p', { class: 'mj-set-note', text: 'Settings last for this lesson. “New lesson” puts back the week’s preset and the class’s usual pace. Exit-check marks are saved only on this device.' }),
+        );
+      };
+
+      const paint = () => {
+        lineToken++; stopTalk(); timers.forEach(clearTimeout); timers.clear();
+        const keep = root.querySelector('.mx-set')?.scrollTop || 0;
+        if (relief()) setOpen = false;
+        root.replaceChildren(...(run ? runScreen() : [startCard(), setOpen ? settingsPanel() : null].filter(Boolean)));
+        const panel = root.querySelector('.mx-set');
+        if (panel) panel.scrollTop = keep;
+      };
+      paint();
+      return () => {
+        lineToken++; timers.forEach(clearTimeout); timers.clear();
+        clearInterval(tick); clearTimeout(holdT); stopTalk();
+      };
+    },
+  },
   note: {
     title: 'Note', icon: 'note', tone: 'stone', w: 300, h: 240,
     build(root, d) {
