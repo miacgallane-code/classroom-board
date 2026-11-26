@@ -55,15 +55,74 @@ const icon = name => {
   if (pic) s.classList.add('ico-colour');
   return s;
 };
-/* a few tools get a little colour picture instead of a line icon (a function, so it's ready before the drawings below) */
+/* every tool gets a little colour picture (on a 30 x 26 grid) in the same style as the whiteboard cards.
+   A function, so it's ready before the drawings further down; the line ICONS above are the fallback. */
 function colourIcon(name) {
-  if (name !== 'whiteboard') return '';
-  /* Pip peeking over a small whiteboard */
-  return '<svg viewBox="0 0 30 26">'
-    + `<rect x="9" y="1" width="20" height="13" rx="1.2" fill="#fff" stroke="${WBC.navy}" stroke-width="1.5"/>`
-    + `<path d="M15 7.5q1.7-2 3.4 0t3.4 0t3.4 0" stroke="${WBC.blue}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`
-    + `<g transform="scale(.8)">${wbPip(12, 20, 'happy')}</g>`
-    + '</svg>';
+  const N = '#2f3a5c', B = '#3f6fb3', Y = '#e9cf6b', G = '#7f9e5c', R = '#d7b6c2', RI = '#9c4e6a', O = '#cf7048',
+    SKY = '#a3bfc7', M = '#b69fb4', P = '#c8d29d', CR = '#f4efe3', W = '#fff';
+  const ln = (d, c = N, w = 1.5) => `<path d="${d}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const pics = {
+    /* a screen with a little picture on it */
+    slides: () => `<rect x="3" y="2" width="24" height="16" rx="2" fill="${W}" stroke="${N}" stroke-width="1.5"/>`
+      + `<path d="M6 15.5l5-6 4 4 3-2.5 6 4.5z" fill="${G}"/><circle cx="21" cy="7" r="2.2" fill="${Y}"/>` + ln('M15 18v4M10 23h10'),
+    /* a golden star with a sparkle */
+    picker: () => `<polygon points="15,3 17.5,9.6 24.5,10 19,14.4 20.9,21.2 15,17.3 9.1,21.2 11,14.4 5.5,10 12.5,9.6" fill="${Y}" stroke="${N}" stroke-width="1.4" stroke-linejoin="round"/>`
+      + ln('M25 3v4M23 5h4', RI, 1.3),
+    /* three friends */
+    groups: () => `<circle cx="8" cy="10" r="3.4" fill="${R}"/><path d="M2.5 22a5.5 5.5 0 0 1 11 0z" fill="${R}"/>`
+      + `<circle cx="22" cy="10" r="3.4" fill="${P}"/><path d="M16.5 22a5.5 5.5 0 0 1 11 0z" fill="${P}"/>`
+      + `<circle cx="15" cy="8" r="3.8" fill="${SKY}" stroke="${N}" stroke-width="1.2"/><path d="M9 23a6 6 0 0 1 12 0z" fill="${SKY}" stroke="${N}" stroke-width="1.2"/>`,
+    /* a die showing five */
+    dice: () => `<rect x="6" y="3" width="18" height="18" rx="4" fill="${W}" stroke="${N}" stroke-width="1.5" transform="rotate(-8 15 12)"/>`
+      + [[10.5, 8], [19, 7], [14.8, 12], [10.8, 17], [19.2, 16]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="${B}"/>`).join(''),
+    /* tally marks on a card */
+    counter: () => `<rect x="3" y="3" width="24" height="19" rx="3" fill="${CR}" stroke="${N}" stroke-width="1.5"/>`
+      + ln('M8.5 7.5v10M12.5 7.5v10M16.5 7.5v10M20.5 7.5v10', B, 1.6) + ln('M6.5 15.5l16-6', O, 1.8),
+    /* Pip peeking over a small whiteboard */
+    whiteboard: () => `<rect x="9" y="1" width="20" height="13" rx="1.2" fill="${W}" stroke="${N}" stroke-width="1.5"/>`
+      + ln('M15 7.5q1.7-2 3.4 0t3.4 0t3.4 0', B) + `<g transform="scale(.8)">${wbPip(12, 20, 'happy')}</g>`,
+    /* Pip herself */
+    pip: () => `<g transform="translate(-2 -2) scale(.22)">${PIP_SVG.replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>`,
+    /* a trophy */
+    gbg: () => `<path d="M9 3h12v6.5a6 6 0 0 1-12 0z" fill="${Y}" stroke="${N}" stroke-width="1.4" stroke-linejoin="round"/>`
+      + ln('M9 5.5H6.5a3 3 0 0 0 3.2 4.3M21 5.5h2.5a3 3 0 0 1-3.2 4.3', N, 1.3) + ln('M15 15.5v3.5', N, 1.4)
+      + `<rect x="10" y="19" width="10" height="4" rx="1.2" fill="${B}"/>` + ln('M13 7.5l1.4 1.4 2.8-2.8', W, 1.4),
+    /* a clock with a sweep of time */
+    timer: () => `<circle cx="15" cy="14" r="9.5" fill="${W}" stroke="${N}" stroke-width="1.5"/>`
+      + `<path d="M15 14V5.8A8.2 8.2 0 0 1 22.6 11z" fill="${R}"/>` + ln('M15 14V8.5M15 14l3.5 2', O, 1.7) + ln('M12.5 2.5h5', N, 1.6),
+    /* a bush with eyes peeking out */
+    hush: () => `<circle cx="9" cy="16" r="6" fill="${G}"/><circle cx="21" cy="16" r="6" fill="${G}"/><circle cx="15" cy="11.5" r="7.5" fill="${P}"/>`
+      + `<path d="M3 22h24" stroke="${N}" stroke-width="1.4" stroke-linecap="round"/>`
+      + `<circle cx="12.5" cy="11.5" r="2" fill="${W}"/><circle cx="17.5" cy="11.5" r="2" fill="${W}"/><circle cx="13" cy="11.8" r="1" fill="${N}"/><circle cx="18" cy="11.8" r="1" fill="${N}"/>`,
+    /* a jewel */
+    jewels: () => `<polygon points="8.5,3.5 21.5,3.5 27,9.5 15,23.5 3,9.5" fill="${M}" stroke="${N}" stroke-width="1.4" stroke-linejoin="round"/>`
+      + `<polygon points="8.5,3.5 21.5,3.5 27,9.5 3,9.5" fill="${SKY}"/>`
+      + ln('M3 9.5h24M11.5 3.5L9 9.5l6 14 6-14-2.5-6', N, 1.1) + ln('M7 6.5l1.5-1', W, 1.2),
+    /* a sleigh with a present */
+    sleigh: () => `<rect x="15" y="3" width="7" height="6" rx=".8" fill="${Y}"/>` + ln('M18.5 3v6M15 6h7', RI, 1.1)
+      + `<path d="M4 7h4.5l3 5.5h13v3a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="${R}" stroke="${N}" stroke-width="1.4" stroke-linejoin="round"/>`
+      + ln('M2.5 23.5h21a3 3 0 0 0 3-3', N, 1.5),
+    /* a woolly sheep */
+    mixup: () => ln('M10 19v4M15 19.5v3.5M19 19v4', N, 1.6)
+      + `<g fill="${CR}" stroke="#cbbf9f" stroke-width="1"><circle cx="9" cy="13.5" r="5"/><circle cx="14.5" cy="10" r="5.5"/><circle cx="19" cy="14" r="5"/><circle cx="13.5" cy="16" r="5"/></g>`
+      + `<ellipse cx="23.5" cy="13" rx="3.6" ry="4.4" fill="#4f4d58"/><circle cx="24.6" cy="11.8" r="1.1" fill="${W}"/><ellipse cx="20.8" cy="10" rx="1.8" ry="1" fill="#4f4d58"/>`,
+    /* a sticky note */
+    note: () => `<path d="M5 3h20v13l-6 6H5z" fill="${Y}" stroke="${N}" stroke-width="1.4" stroke-linejoin="round"/>`
+      + `<path d="M25 16h-6v6z" fill="#d8bb52" stroke="${N}" stroke-width="1.4" stroke-linejoin="round"/>` + ln('M9 8.5h12M9 12.5h8', N, 1.3),
+    /* a screen with a green arrow down */
+    install: () => `<rect x="3" y="2" width="24" height="16" rx="2" fill="${W}" stroke="${N}" stroke-width="1.5"/>`
+      + ln('M15 5.5v8M11.5 10.5l3.5 3.5 3.5-3.5', G, 2) + ln('M15 18v4M10 23h10'),
+    /* a clipboard of names */
+    list: () => `<rect x="6" y="3.5" width="18" height="20" rx="2" fill="${W}" stroke="${N}" stroke-width="1.5"/>`
+      + `<rect x="11" y="1.5" width="8" height="4" rx="1.2" fill="${Y}" stroke="${N}" stroke-width="1.2"/>`
+      + `<circle cx="10" cy="11" r="1.3" fill="${R}"/><circle cx="10" cy="15.5" r="1.3" fill="${P}"/><circle cx="10" cy="20" r="1.3" fill="${SKY}"/>`
+      + ln('M13 11h7M13 15.5h7M13 20h5', B, 1.4),
+    /* corners opening out */
+    full: () => `<rect x="9" y="7.5" width="12" height="11" rx="1.5" fill="${SKY}"/>` + ln('M4 9V3.5h6M26 9V3.5h-6M4 17v5.5h6M26 17v5.5h-6', N, 1.8),
+    /* tuck the tools away */
+    hide: () => ln('M14 6l-7 7 7 7', B, 2.2) + ln('M23 6l-7 7 7 7', SKY, 2.2),
+  };
+  return pics[name] ? `<svg viewBox="0 0 30 26">${pics[name]()}</svg>` : '';
 }
 document.querySelectorAll('[data-icon]').forEach(n => n.replaceWith(icon(n.dataset.icon)));
 

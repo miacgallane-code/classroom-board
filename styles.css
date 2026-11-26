@@ -54,8 +54,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 .ico { display: inline-grid; place-items: center; }
 .ico svg { width: 24px; height: 24px; display: block; }
-.rail-btn .ico-colour svg { width: 42px; height: 36px; }
+.rail-btn .ico-colour svg { width: 37px; height: 32px; }
 .w-head .ico-colour svg { width: 26px; height: 22px; }
+.widget.slim .w-head .ico-colour svg { width: 21px; height: 18px; }
 
 /* ---------- Rail ---------- */
 #rail {
