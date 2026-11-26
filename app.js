@@ -999,6 +999,7 @@ const WIDGETS = {
 
       /* ---- the card ---- */
       const card = el('div', { class: 'wb' });
+      const hint = el('p', { class: 'wb-hint', text: 'Tap any picture to jump to that step.' });
       const drawCard = () => {
         const now = formation ? form().step : d.step;
         card.replaceChildren(...WB.stepsWith(d.steps).map((s, i) => {
@@ -1073,7 +1074,7 @@ const WIDGETS = {
       const panel = el('div', { class: 'wb-set', hidden: true });
       const setBtn = el('button', { class: 'w-btn round', text: '⋯', title: 'Change the words', 'aria-label': 'Change the step names and words', 'aria-expanded': 'false' });
       const showSet = on => {
-        panel.hidden = !on; card.hidden = on;
+        panel.hidden = !on; card.hidden = on; hint.hidden = on;
         setBtn.setAttribute('aria-expanded', String(on));
         if (on) fillSet(); else draw();
       };
@@ -1112,7 +1113,7 @@ const WIDGETS = {
           classSwitch(), soundBtn, modeSel, setBtn);
       }
       draw();
-      root.append(...[top, card, panel, bottom].filter(Boolean));
+      root.append(...[top, card, hint, panel, bottom].filter(Boolean));
       return () => clearInterval(spin);
     },
   },
@@ -3226,6 +3227,14 @@ installBtn.addEventListener('click', async () => {
 /* ---------- go ---------- */
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  /* when a new version takes over, reload once so it's used straight away
+     (otherwise the board keeps running the old version until it's closed and reopened) */
+  const hadVersion = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadVersion || reloading) return;
+    reloading = true; writeNow(); location.reload();
+  });
 }
 $('#rail-class-name').textContent = activeClass().name || 'Untitled class';
 document.body.classList.toggle('rail-hidden', !!state.railHidden);

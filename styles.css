@@ -319,9 +319,12 @@ dialog::backdrop { background: #2f2e3540; backdrop-filter: blur(3px); }
 .wb-step {
   display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; overflow: hidden;
   padding: 6px 4px; border: 0; border-radius: var(--r-md); background: transparent; text-align: center;
-  opacity: .42; transition: opacity .25s, transform .25s, background .25s;
+  opacity: .6; cursor: pointer; transition: opacity .25s, transform .25s, background .25s;
 }
-button.wb-step:hover { opacity: .75; }
+button.wb-step:hover { opacity: .9; background: #faf8f2; }
+button.wb-step:hover .wb-pic { transform: translateY(-2px); }
+button.wb-step:active .wb-pic { transform: scale(.97); }
+.wb-hint { flex: none; margin: 0; text-align: center; font-size: 13px; color: var(--ink-soft); }
 .wb-step.now { opacity: 1; background: #faf8f2; }
 .wb-step.now .wb-pic { border-width: 3px; box-shadow: 0 6px 16px rgba(47, 58, 92, .16); transform: translateY(-2px); }
 .wb-pic {
