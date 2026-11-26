@@ -50,9 +50,21 @@ const ICONS = {
 };
 const icon = name => {
   const s = el('span', { class: 'ico', 'aria-hidden': 'true' });
-  s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+  const pic = colourIcon(name);
+  s.innerHTML = pic || `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+  if (pic) s.classList.add('ico-colour');
   return s;
 };
+/* a few tools get a little colour picture instead of a line icon (a function, so it's ready before the drawings below) */
+function colourIcon(name) {
+  if (name !== 'whiteboard') return '';
+  /* Pip peeking over a small whiteboard */
+  return '<svg viewBox="0 0 30 26">'
+    + `<rect x="9" y="1" width="20" height="13" rx="1.2" fill="#fff" stroke="${WBC.navy}" stroke-width="1.5"/>`
+    + `<path d="M15 7.5q1.7-2 3.4 0t3.4 0t3.4 0" stroke="${WBC.blue}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`
+    + `<g transform="scale(.8)">${wbPip(12, 20, 'happy')}</g>`
+    + '</svg>';
+}
 document.querySelectorAll('[data-icon]').forEach(n => n.replaceWith(icon(n.dataset.icon)));
 
 /* muted pastel tones; each name always gets the same one */
