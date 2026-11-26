@@ -1004,9 +1004,13 @@ const WIDGETS = {
         card.replaceChildren(...WB.stepsWith(d.steps).map((s, i) => {
           const pic = el('span', { class: 'wb-pic', 'aria-hidden': 'true' });
           pic.innerHTML = `<svg viewBox="0 0 100 100">${WB_PICS[s.key]}</svg>`;
-          const props = { class: 'wb-step' + (i === now ? ' now' : ''), 'aria-current': i === now && 'step' };
-          if (!formation) Object.assign(props, { type: 'button', title: `Show ${s.label}`, onclick: () => { d.step = i; save(); draw(); callStep(); } });
-          return el(formation ? 'div' : 'button', props,
+          /* tap any step to jump straight to it, in either mode (no need to go through Next) */
+          const jump = () => {
+            if (formation) d.form[cls.id] = { ...form(), step: i };
+            else d.step = i;
+            save(); draw(); callStep();
+          };
+          return el('button', { type: 'button', class: 'wb-step' + (i === now ? ' now' : ''), 'aria-current': i === now && 'step', title: `Show ${s.label}`, onclick: jump },
             pic, el('span', { class: 'wb-label', text: s.label }), el('span', { class: 'wb-text', text: s.text }));
         }));
       };
